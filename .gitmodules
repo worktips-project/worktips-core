@@ -10,3 +10,11 @@
 [submodule "external/worktips-mq"]
 	path = external/worktips-mq
 	url = https://github.com/worktips-project/worktips-mq
+[submodule "external/unbound"]
+	path = external/unbound
+	url = https://github.com/monero-project/unbound
+	branch = monero
+[submodule "external/miniupnp"]
+	path = external/miniupnp
+	url = https://github.com/monero-project/miniupnp
+	branch = monero
