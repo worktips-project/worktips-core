@@ -12,3 +12,9 @@
 [submodule "external/trezor-common"]
 	path = external/trezor-common
 	url = https://github.com/trezor/trezor-common.git
+[submodule "external/randomx"]
+	path = external/randomx
+	url = https://github.com/loki-project/loki-randomXL
+[submodule "external/worktips-mq"]
+	path = external/worktips-mq
+	url = https://github.com/worktips-project/worktips-mq
