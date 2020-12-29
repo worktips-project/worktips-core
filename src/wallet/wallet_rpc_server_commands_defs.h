@@ -1652,7 +1652,7 @@ namespace tools::wallet_rpc {
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Create a new wallet. You need to have set the argument "'–wallet-dir" when launching loki-wallet-rpc to make this work.
+  // Create a new wallet. You need to have set the argument "'--wallet-dir" when launching loki-wallet-rpc to make this work.
   struct CREATE_WALLET : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("create_wallet"); }
@@ -1662,6 +1662,9 @@ namespace tools::wallet_rpc {
       std::string filename; // Set the wallet file name.
       std::string password; // (Optional) Set the password to protect the wallet.
       std::string language; // Language for your wallets' seed.
+      bool hardware_wallet; // Create this wallet from a connected hardware wallet.  (`language` will be ignored).
+      std::string device_name; // When `hardware` is true, this specifies the hardware wallet device type (currently supported: "Ledger").  If omitted "Ledger" is used.
+      std::optional<std::string> device_label; // Custom label to write to a `wallet.hwdev.txt`. Can be empty; omit the parameter entirely to not write a .hwdev.txt file at all.
 
       KV_MAP_SERIALIZABLE
     };
@@ -1670,7 +1673,7 @@ namespace tools::wallet_rpc {
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Open a wallet. You need to have set the argument "–-wallet-dir" when launching loki-wallet-rpc to make this work.
+  // Open a wallet. You need to have set the argument "--wallet-dir" when launching loki-wallet-rpc to make this work.
   // The wallet rpc executable may only open wallet files within the same directory as wallet-dir, otherwise use the
   // "--wallet-file" flag to open specific wallets.
   struct OPEN_WALLET : RPC_COMMAND
@@ -1679,7 +1682,7 @@ namespace tools::wallet_rpc {
 
     struct request
     {
-      std::string filename; // Wallet name stored in "–-wallet-dir".
+      std::string filename; // Wallet name stored in "--wallet-dir".
       std::string password; // The wallet password, set as "" if there's no password
       bool autosave_current; // (Optional: Default true): If a pre-existing wallet is open, save to disk before opening the new wallet.
 
@@ -2361,27 +2364,67 @@ This command is only required if the open wallet is one of the owners of a LNS r
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Returns a list of known, plain-text LNS names that this wallet knows about.
+  // Returns a list of known, plain-text LNS names along with record details for names that this
+  // wallet knows about.  This can optionally decrypt the LNS value as well, or else just return the
+  // encrypted value.
   struct LNS_KNOWN_NAMES : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("lns_known_names"); }
 
-    struct known_name
+    struct known_record
     {
-      std::string type; // The mapping type, "session" or "lokinet".
-      std::string hashed; // The hashed name (in base64)
-      std::string name; // The plaintext name
+      std::string type;                          // The mapping type, "session" or "lokinet".
+      std::string hashed;                        // The hashed name (in base64)
+      std::string name;                          // The plaintext name
+      std::string owner;                         // The public key that purchased the Loki Name Service entry.
+      std::optional<std::string> backup_owner;   // The backup public key or wallet that the owner specified when purchasing the Loki Name Service entry. Omitted if no backup owner.
+      std::string encrypted_value;               // The encrypted value that the name maps to, in hex.
+      std::optional<std::string> value;          // Decrypted value that that name maps to.  Only provided if `decrypt: true` was specified in the request.
+      uint64_t update_height;                    // The last height that this Loki Name Service entry was updated on the Blockchain.
+      std::optional<uint64_t> expiration_height; // For records that expire, this will be set to the expiration block height.
+      std::optional<bool> expired;               // Indicates whether the record has expired. Only included in the response if "include_expired" is specified in the request.
+      std::string txid;                          // The txid of the mapping's most recent update or purchase.
 
       KV_MAP_SERIALIZABLE
     };
-    struct request : EMPTY {};
+    struct request {
+      bool decrypt;         // If true (default false) then also decrypt and include the `value` field
+      bool include_expired; // If true (default false) then also include expired records
+
+      KV_MAP_SERIALIZABLE
+    };
 
     struct response
     {
-      std::vector<known_name> known_names; // List of (unhashed) name info known to this wallet
+      std::vector<known_record> known_names; // List of records known to this wallet
 
       KV_MAP_SERIALIZABLE
     };
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
+  // Adds one or more names to the persistent LNS wallet cache of known names (i.e. for names that
+  // are owned by this wallet that aren't currently in the cache).
+  struct LNS_ADD_KNOWN_NAMES : RPC_COMMAND
+  {
+    static constexpr auto names() { return NAMES("lns_add_known_names"); }
+
+    struct record
+    {
+      std::string type; // The LNS type (mandatory); currently support values are: "session", "lokinet"
+      std::string name; // The (unhashed) name of the record
+
+      KV_MAP_SERIALIZABLE
+    };
+
+    struct request
+    {
+      std::vector<record> names; // List of names to add to the cache
+
+      KV_MAP_SERIALIZABLE
+    };
+
+    using response = EMPTY;
   };
 
   LOKI_RPC_DOC_INTROSPECT
@@ -2526,9 +2569,11 @@ This command is only required if the open wallet is one of the owners of a LNS r
     SET_LOG_CATEGORIES,
     LNS_BUY_MAPPING,
     LNS_UPDATE_MAPPING,
+    LNS_RENEW_MAPPING,
     LNS_MAKE_UPDATE_SIGNATURE,
     LNS_HASH_NAME,
     LNS_KNOWN_NAMES,
+    LNS_ADD_KNOWN_NAMES,
     LNS_DECRYPT_VALUE,
     LNS_ENCRYPT_VALUE
   >;

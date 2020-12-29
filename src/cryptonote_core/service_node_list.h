@@ -61,6 +61,10 @@ namespace service_nodes
       uint8_t round = 0;
     } pulse;
 
+    bool pass() const {
+      return voted;
+    }; 
+
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(height);
       KV_SERIALIZE(voted);
@@ -72,30 +76,70 @@ namespace service_nodes
     END_KV_SERIALIZE_MAP()
   };
 
-  struct participation_history
+  struct timestamp_participation_entry
   {
-    std::array<participation_entry, QUORUM_VOTE_CHECK_COUNT> array;
-    size_t                                                   write_index;
+    bool participated      = true;
+    bool pass() const {
+      return participated;
+    }; 
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(participated);
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct timesync_entry
+  {
+    bool in_sync       = true;
+    bool pass() const {
+      return in_sync;
+    }; 
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(in_sync);
+    END_KV_SERIALIZE_MAP()
+  };
+
+  template <typename ValueType, size_t Count = QUORUM_VOTE_CHECK_COUNT>
+  struct participation_history {
+    std::array<ValueType, Count> array;
+    size_t write_index;
 
     void reset() { write_index = 0; }
 
-    void add(participation_entry const &entry)
+    void add(ValueType &entry)
     {
       size_t real_write_index = write_index % array.size();
       array[real_write_index] = entry;
       write_index++;
     }
 
-    participation_entry       *begin()       { return array.data(); }
-    participation_entry       *end()         { return array.data() + std::min(array.size(), write_index); }
-    participation_entry const *begin() const { return array.data(); }
-    participation_entry const *end()   const { return array.data() + std::min(array.size(), write_index); }
+    bool check_participation(uint16_t threshold)
+    {
+      if (this->write_index >= Count)
+      {
+        int failed_counter = 0;
+        for (ValueType &entry : array)
+          if (!entry.pass()) failed_counter++;
+
+        if (failed_counter > threshold)
+          return false;
+      }
+      return true;
+    }
+
+    ValueType *begin()       { return array.data(); }
+    ValueType *end()         { return array.data() + std::min(array.size(), write_index); }
+    ValueType const *begin() const { return array.data(); }
+    ValueType const *end()   const { return array.data() + std::min(array.size(), write_index); }
   };
 
   struct proof_info
   {
-    participation_history pulse_participation{};
-    participation_history checkpoint_participation{};
+    participation_history<participation_entry> pulse_participation{};
+    participation_history<participation_entry> checkpoint_participation{};
+    participation_history<timestamp_participation_entry> timestamp_participation{};
+    participation_history<timesync_entry> timesync_status{};
 
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks
@@ -161,6 +205,7 @@ namespace service_nodes
       v3_quorumnet,
       v4_noproofs,
       v5_pulse_recomm_credit,
+      v6_reassign_sort_keys,
       _count
     };
 
@@ -415,6 +460,9 @@ namespace service_nodes
     /// key if not found.  (Note: this is just looking up the association, not derivation).
     crypto::public_key get_pubkey_from_x25519(const crypto::x25519_public_key &x25519) const;
 
+    // Returns a pubkey of a random service node in the service node list
+    crypto::public_key get_random_pubkey();
+
     /// Initializes the x25519 map from current pubkey state; called during initialization
     void initialize_x25519_map();
 
@@ -587,6 +635,8 @@ namespace service_nodes
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
     bool debug_allow_local_ips = false;
+    void record_timestamp_participation(crypto::public_key const &pubkey, bool participated);
+    void record_timesync_status(crypto::public_key const &pubkey, bool synced);
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex
@@ -687,6 +737,9 @@ namespace service_nodes
   // The pulse entropy is generated for the next block after the top_block passed in.
   std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, cryptonote::block const &top_block, uint8_t pulse_round);
   std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, crypto::hash const &top_hash, uint8_t pulse_round);
+  // Same as above, but uses the current blockchain top block and defaults to round 0 if not
+  // specified.
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, uint8_t pulse_round = 0);
 
   payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info);
 

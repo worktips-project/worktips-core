@@ -32,7 +32,7 @@
 #pragma once
 
 #include "crypto/crypto.h"
-#include "string_tools.h"
+#include "epee/string_tools.h"
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -41,10 +41,10 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_voting.h"
-#include "rpc/rpc_handler.h"
 #include "common/varint.h"
 #include "common/perf_timer.h"
 #include "common/meta.h"
+#include "common/hex.h"
 #include "checkpoints/checkpoints.h"
 
 #include "cryptonote_core/service_node_quorum_cop.h"
@@ -448,6 +448,9 @@ namespace rpc {
   {
     static constexpr auto names() { return NAMES("get_outs.bin"); }
 
+    /// Maximum outputs that may be requested in a single request (unless admin)
+    static constexpr size_t MAX_COUNT = 5000;
+
     struct request
     {
       std::vector<get_outputs_out> outputs; // Array of structure `get_outputs_out`.
@@ -481,6 +484,9 @@ namespace rpc {
   struct GET_OUTPUTS : PUBLIC, LEGACY
   {
     static constexpr auto names() { return NAMES("get_outs"); }
+
+    /// Maximum outputs that may be requested in a single request (unless admin)
+    static constexpr size_t MAX_COUNT = 5000;
 
     struct request
     {
@@ -1729,6 +1735,14 @@ namespace rpc {
     };
   };
 
+  struct output_distribution_data
+  {
+    std::vector<std::uint64_t> distribution;
+    std::uint64_t start_height;
+    std::uint64_t base;
+  };
+
+
   LOKI_RPC_DOC_INTROSPECT
   struct GET_OUTPUT_DISTRIBUTION : PUBLIC
   {
@@ -1822,7 +1836,7 @@ namespace rpc {
 
 
   LOKI_RPC_DOC_INTROSPECT
-  // Get the quorum state which is the list of public keys of the nodes who are voting, and the list of public keys of the nodes who are being tested.
+  // Accesses the list of public keys of the nodes who are participating or being tested in a quorum.
   struct GET_QUORUM_STATE : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_quorum_state"); }
@@ -1832,17 +1846,17 @@ namespace rpc {
     static constexpr uint8_t ALL_QUORUMS_SENTINEL_VALUE = 255;
     struct request
     {
-      uint64_t start_height; // (Optional): Start height, omit both start and end height to request the latest quorum
+      uint64_t start_height; // (Optional): Start height, omit both start and end height to request the latest quorum. Note that "latest" means different heights for different types of quorums as not all quorums exist at every block heights.
       uint64_t end_height;   // (Optional): End height, omit both start and end height to request the latest quorum
-      uint8_t  quorum_type;  // (Optional): Set value to request a specific quorum, 0 = Obligation, 1 = Checkpointing, 255 = all quorums, default is all quorums;
+      uint8_t  quorum_type;  // (Optional): Set value to request a specific quorum, 0 = Obligation, 1 = Checkpointing, 2 = Blink, 3 = Pulse, 255 = all quorums, default is all quorums. For Pulse quorums, requesting the blockchain height (or latest) returns the primary pulse quorum responsible for the next block; for heights with blocks this returns the actual quorum, which may be a backup quorum if the primary quorum did not produce in time.
 
       KV_MAP_SERIALIZABLE
     };
 
     struct quorum_t
     {
-      std::vector<std::string> validators; // Public key of the service node
-      std::vector<std::string> workers; // Public key of the service node
+      std::vector<std::string> validators; // List of service node public keys in the quorum. For obligations quorums these are the testing nodes; for checkpoint and blink these are the participating nodes (there are no workers); for Pulse blink quorums these are the block signers.
+      std::vector<std::string> workers; // Public key of the quorum workers. For obligations quorums these are the nodes being tested; for Pulse quorums this is the block producer. Checkpoint and Blink quorums do not populate this field.
 
       KV_MAP_SERIALIZABLE
 
@@ -2110,6 +2124,8 @@ namespace rpc {
         uint64_t                                storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
         std::vector<service_nodes::participation_entry> checkpoint_participation;    // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
         std::vector<service_nodes::participation_entry> pulse_participation;         // Of the last N pulse blocks the Service Node is in a pulse quorum, record whether or not the Service Node voted (participated) in that block
+        std::vector<service_nodes::timestamp_participation_entry> timestamp_participation;         // Of the last N timestamp messages, record whether or not the Service Node was in sync with the network
+        std::vector<service_nodes::timesync_entry> timesync_status;         // Of the last N timestamp messages, record whether or not the Service Node responded
 
         KV_MAP_SERIALIZABLE
       };
@@ -2243,7 +2259,6 @@ namespace rpc {
   struct GET_OUTPUT_BLACKLIST : PUBLIC, BINARY
   {
     static constexpr auto names() { return NAMES("get_output_blacklist.bin"); }
-
     struct request : EMPTY {};
 
     struct response
@@ -2282,7 +2297,7 @@ namespace rpc {
       quorum_signature_serialized() = default;
       quorum_signature_serialized(service_nodes::quorum_signature const &entry)
       : voter_index(entry.voter_index)
-      , signature(epee::string_tools::pod_to_hex(entry.signature)) { }
+      , signature(tools::type_to_hex(entry.signature)) { }
 
       KV_MAP_SERIALIZABLE
 
@@ -2306,7 +2321,7 @@ namespace rpc {
       : version(checkpoint.version)
       , type(checkpoint_t::type_to_string(checkpoint.type))
       , height(checkpoint.height)
-      , block_hash(epee::string_tools::pod_to_hex(checkpoint.block_hash))
+      , block_hash(tools::type_to_hex(checkpoint.block_hash))
       , prev_height(checkpoint.prev_height)
       {
         signatures.reserve(checkpoint.signatures.size());
@@ -2463,6 +2478,7 @@ namespace rpc {
     struct request
     {
       std::vector<std::string> entries; // The owner's public key to find all Loki Name Service entries for.
+      bool include_expired;             // Optional: if provided and true, include entries in the results even if they are expired
 
       KV_MAP_SERIALIZABLE
     };

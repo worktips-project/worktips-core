@@ -34,8 +34,9 @@
 #include <limits>
 #include <lokimq/hex.h>
 #include <variant>
-#include "wipeable_string.h"
-#include "string_tools.h"
+#include "common/hex.h"
+#include "epee/wipeable_string.h"
+#include "epee/string_tools.h"
 #include "common/i18n.h"
 #include "common/meta.h"
 #include "serialization/string.h"
@@ -133,7 +134,7 @@ namespace cryptonote
     if (tx.version >= txversion::v2_ringct && !is_coinbase(tx))
     {
       rct::rctSig &rv = tx.rct_signatures;
-      if (rv.type == rct::RCTTypeNull)
+      if (rv.type == rct::RCTType::Null)
         return true;
       if (rv.outPk.size() != tx.vout.size())
       {
@@ -147,7 +148,7 @@ namespace cryptonote
           LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
           return false;
         }
-        rv.outPk[n].dest = rct::pk2rct(std::get<txout_to_key>(tx.vout[n].target).key);
+        rv.outPk[n].dest = rct::pk2rct(var::get<txout_to_key>(tx.vout[n].target).key);
       }
 
       if (!base_only)
@@ -451,7 +452,7 @@ namespace cryptonote
   {
     CHECK_AND_ASSERT_MES(tx.pruned, std::numeric_limits<uint64_t>::max(), "get_pruned_transaction_weight does not support non pruned txes");
     CHECK_AND_ASSERT_MES(tx.version >= txversion::v2_ringct, std::numeric_limits<uint64_t>::max(), "get_pruned_transaction_weight does not support v1 txes");
-    CHECK_AND_ASSERT_MES(tx.rct_signatures.type >= rct::RCTTypeBulletproof2,
+    CHECK_AND_ASSERT_MES(tx.rct_signatures.type >= rct::RCTType::Bulletproof2,
         std::numeric_limits<uint64_t>::max(), "get_pruned_transaction_weight does not support older range proof types");
     CHECK_AND_ASSERT_MES(!tx.vin.empty(), std::numeric_limits<uint64_t>::max(), "empty vin");
     CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::txin_to_key>(tx.vin[0]), std::numeric_limits<uint64_t>::max(), "empty vin");
@@ -471,8 +472,8 @@ namespace cryptonote
     weight += extra;
 
     // calculate deterministic CLSAG/MLSAG data size
-    const size_t ring_size = std::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
-    if (tx.rct_signatures.type == rct::RCTTypeCLSAG)
+    const size_t ring_size = var::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
+    if (tx.rct_signatures.type == rct::RCTType::CLSAG)
       extra = tx.vin.size() * (ring_size + 2) * 32;
     else
       extra = tx.vin.size() * (ring_size * (1 + 1) * 32 + 32 /* cc */);
@@ -926,7 +927,7 @@ namespace cryptonote
         CHECK_AND_NO_ASSERT_MES(0 < out.amount, false, "zero amount output in transaction id=" << get_transaction_hash(tx));
       }
 
-      if(!check_key(std::get<txout_to_key>(out.target).key))
+      if(!check_key(var::get<txout_to_key>(out.target).key))
         return false;
     }
     return true;
@@ -972,11 +973,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   std::string short_hash_str(const crypto::hash& h)
   {
-    std::string res = epee::string_tools::pod_to_hex(h);
-    CHECK_AND_ASSERT_MES(res.size() == 64, res, "wrong hash256 with string_tools::pod_to_hex conversion");
-    auto erased_pos = res.erase(8, 48);
-    res.insert(8, "....");
-    return res;
+    return lokimq::to_hex(tools::view_guts(h).substr(0, 4)) + "....";
   }
   //---------------------------------------------------------------
   bool is_out_to_acc(const account_keys& acc, const txout_to_key& out_key, const crypto::public_key& tx_pub_key, const std::vector<crypto::public_key>& additional_tx_pub_keys, size_t output_index)
@@ -1039,7 +1036,7 @@ namespace cryptonote
     for(const tx_out& o:  tx.vout)
     {
       CHECK_AND_ASSERT_MES(std::holds_alternative<txout_to_key>(o.target), false, "wrong type id in transaction out" );
-      if(is_out_to_acc(acc, std::get<txout_to_key>(o.target), tx_pub_key, additional_tx_pub_keys, i))
+      if(is_out_to_acc(acc, var::get<txout_to_key>(o.target), tx_pub_key, additional_tx_pub_keys, i))
       {
         outs.push_back(i);
         money_transfered += o.amount;
@@ -1188,15 +1185,13 @@ namespace cryptonote
     }
     else
     {
-      transaction &tt = const_cast<transaction&>(t);
       serialization::binary_string_archiver ba;
-      const size_t inputs = t.vin.size();
-      const size_t outputs = t.vout.size();
       size_t mixin = 0;
       if (t.vin.size() > 0 && std::holds_alternative<txin_to_key>(t.vin[0]))
-        mixin = std::get<txin_to_key>(t.vin[0]).key_offsets.size() - 1;
+        mixin = var::get<txin_to_key>(t.vin[0]).key_offsets.size() - 1;
       try {
-        tt.rct_signatures.p.serialize_rctsig_prunable(ba, t.rct_signatures.type, inputs, outputs, mixin);
+        const_cast<transaction&>(t).rct_signatures.p.serialize_rctsig_prunable(
+                ba, t.rct_signatures.type, t.vin.size(), t.vout.size(), mixin);
       } catch (const std::exception& e) {
         LOG_ERROR("Failed to serialize rct signatures (prunable): " << e.what());
         return false;
@@ -1237,7 +1232,7 @@ namespace cryptonote
     }
 
     // prunable rct
-    if (t.rct_signatures.type == rct::RCTTypeNull)
+    if (t.rct_signatures.type == rct::RCTType::Null)
       hashes[2] = crypto::null_hash;
     else
       hashes[2] = pruned_data_hash;
@@ -1292,7 +1287,7 @@ namespace cryptonote
     }
 
     // prunable rct
-    if (t.rct_signatures.type == rct::RCTTypeNull)
+    if (t.rct_signatures.type == rct::RCTType::Null)
     {
       hashes[2] = crypto::null_hash;
     }
@@ -1553,7 +1548,7 @@ std::string lns::generic_owner::to_string(cryptonote::network_type nettype) cons
   if (type == lns::generic_owner_sig_type::monero)
     return cryptonote::get_account_address_as_str(nettype, wallet.is_subaddress, wallet.address);
   else
-    return epee::to_hex::string(epee::as_byte_span(ed25519));
+    return tools::type_to_hex(ed25519);
 }
 
 bool lns::generic_owner::operator==(generic_owner const &other) const

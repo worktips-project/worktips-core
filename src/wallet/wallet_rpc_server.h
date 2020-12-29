@@ -38,6 +38,7 @@
 #include <uWebSockets/App.h>
 
 #include "common/util.h"
+#include "common/fs.h"
 #include "common/periodic_task.h"
 #include "wallet_rpc_server_commands_defs.h"
 #include "wallet2.h"
@@ -162,6 +163,7 @@ namespace tools
     wallet_rpc::LNS_MAKE_UPDATE_SIGNATURE::response       invoke(wallet_rpc::LNS_MAKE_UPDATE_SIGNATURE::request&& req);
     wallet_rpc::LNS_HASH_NAME::response                   invoke(wallet_rpc::LNS_HASH_NAME::request&& req);
     wallet_rpc::LNS_KNOWN_NAMES::response                 invoke(wallet_rpc::LNS_KNOWN_NAMES::request&& req);
+    wallet_rpc::LNS_ADD_KNOWN_NAMES::response             invoke(wallet_rpc::LNS_ADD_KNOWN_NAMES::request&& req);
     wallet_rpc::LNS_DECRYPT_VALUE::response               invoke(wallet_rpc::LNS_DECRYPT_VALUE::request&& req);
     wallet_rpc::LNS_ENCRYPT_VALUE::response               invoke(wallet_rpc::LNS_ENCRYPT_VALUE::request&& req);
     wallet_rpc::QUERY_KEY::response                       invoke(wallet_rpc::QUERY_KEY::request&& req);
@@ -202,7 +204,7 @@ namespace tools
       void stop_long_poll_thread();
 
       std::unique_ptr<wallet2> m_wallet;
-      std::string m_wallet_dir;
+      fs::path m_wallet_dir;
       std::vector<std::tuple<std::string /*ip*/, uint16_t /*port*/, bool /*required*/>> m_bind;
       tools::private_file rpc_login_file;
       std::atomic<bool> m_stop;

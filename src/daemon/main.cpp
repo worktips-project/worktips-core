@@ -34,9 +34,10 @@
 #include "common/scoped_message_writer.h"
 #include "common/password.h"
 #include "common/util.h"
+#include "common/fs.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "daemonizer/daemonizer.h"
-#include "misc_log_ex.h"
+#include "epee/misc_log_ex.h"
 #include "p2p/net_node.h"
 #include "rpc/rpc_args.h"
 #include "rpc/core_rpc_server.h"
@@ -54,7 +55,6 @@
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace po = boost::program_options;
-namespace bf = boost::filesystem;
 
 using namespace std::literals;
 
@@ -133,15 +133,16 @@ int main(int argc, char const * argv[])
       return 0;
     }
 
-    std::string config = command_line::get_arg(vm, daemon_args::arg_config_file);
-    boost::filesystem::path config_path(config);
-    boost::system::error_code ec;
-    if (bf::exists(config_path, ec))
+    auto config = fs::u8path(command_line::get_arg(vm, daemon_args::arg_config_file));
+    if (std::error_code ec; fs::exists(config, ec))
     {
       try
       {
+        fs::ifstream cfg{config};
+        if (!cfg.is_open())
+          throw std::runtime_error{"Unable to open file"};
         po::store(po::parse_config_file<char>(
-                    config_path.string<std::string>().c_str(),
+                    cfg,
                     po::options_description{}.add(core_settings).add(hidden_options)),
                 vm);
       }
@@ -174,12 +175,11 @@ int main(int argc, char const * argv[])
     //     relative path: relative to cwd
 
     // Create data dir if it doesn't exist
-    boost::filesystem::path data_dir = boost::filesystem::absolute(
-        command_line::get_arg(vm, cryptonote::arg_data_dir));
+    auto data_dir = fs::absolute(fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
 
     // FIXME: not sure on windows implementation default, needs further review
-    //bf::path relative_path_base = daemonizer::get_relative_path_base(vm);
-    bf::path relative_path_base = data_dir;
+    //fs::path relative_path_base = daemonizer::get_relative_path_base(vm);
+    fs::path relative_path_base = data_dir;
 
     po::notify(vm);
 
@@ -188,11 +188,11 @@ int main(int argc, char const * argv[])
     //   if log-file argument given:
     //     absolute path
     //     relative path: relative to data_dir
-    bf::path log_file_path {data_dir / std::string(CRYPTONOTE_NAME ".log")};
+    auto log_file_path = data_dir / CRYPTONOTE_NAME ".log";
     if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
       log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
-    if (!log_file_path.has_parent_path())
-      log_file_path = bf::absolute(log_file_path, relative_path_base);
+    if (log_file_path.is_relative())
+      log_file_path = fs::absolute(fs::relative(log_file_path, relative_path_base));
     mlog_configure(log_file_path.string(), true, command_line::get_arg(vm, daemon_args::arg_max_log_file_size), command_line::get_arg(vm, daemon_args::arg_max_log_files));
 
     // Set log level
@@ -202,7 +202,7 @@ int main(int argc, char const * argv[])
     }
 
     // after logs initialized
-    tools::create_directories_if_necessary(data_dir.string());
+    tools::create_directories_if_necessary(data_dir);
 
 #ifdef STACK_TRACE
     tools::set_stack_trace_log(log_file_path.filename().string());
@@ -221,36 +221,31 @@ int main(int argc, char const * argv[])
 
       if (command.size())
       {
-        const cryptonote::rpc_args::descriptors arg{};
-        auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
-        auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
-
-        if (uint32_t rpc_ip; !epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
-        {
-          std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
-          return 1;
+        auto rpc_config = cryptonote::rpc_args::process(vm);
+        std::string rpc_addr;
+        // TODO: remove this in loki 9.x and only use rpc-admin
+        if (!is_arg_defaulted(vm, cryptonote::rpc::http_server::arg_rpc_bind_port) ||
+            rpc_config.bind_ip.has_value()) {
+          auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
+          if (rpc_port == 0)
+            rpc_port =
+              command_line::get_arg(vm, cryptonote::arg_testnet_on) ? config::testnet::RPC_DEFAULT_PORT :
+              command_line::get_arg(vm, cryptonote::arg_devnet_on) ? config::devnet::RPC_DEFAULT_PORT :
+              config::RPC_DEFAULT_PORT;
+          rpc_addr = rpc_config.bind_ip.value_or("127.0.0.1") + ":" + std::to_string(rpc_port);
+        } else {
+          rpc_addr = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
+          if (rpc_addr == "none")
+            throw std::runtime_error{"Cannot invoke lokid command: --rpc-admin is disabled"};
         }
 
-        const char *env_rpc_login = nullptr;
-        const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);
-        const bool use_rpc_env = !has_rpc_arg && (env_rpc_login = getenv("RPC_LOGIN")) != nullptr && strlen(env_rpc_login) > 0;
-        std::optional<tools::login> login{};
-        if (has_rpc_arg || use_rpc_env)
         {
-          login = tools::login::parse(
-            has_rpc_arg ? command_line::get_arg(vm, arg.rpc_login) : std::string(env_rpc_login), false, [](bool verify) {
-              rdln::suspend_readline pause_readline;
-              return tools::password_container::prompt(verify, "Daemon client password");
-            }
-          );
-          if (!login)
-          {
-            std::cerr << "Failed to obtain password" << std::endl;
-            return 1;
-          }
+          // Throws if invalid:
+          auto [ip, port] = daemonize::parse_ip_port(rpc_addr, "--rpc-admin");
+          rpc_addr = "http://"s + (ip.find(':') != std::string::npos ? "[" + ip + "]" : ip) + ":" + std::to_string(port);
         }
 
-        daemonize::command_server rpc_commands{"http://"s + rpc_ip_str + ":" + std::to_string(rpc_port), std::move(login)};
+        daemonize::command_server rpc_commands{rpc_addr, rpc_config.login};
         return rpc_commands.process_command_and_log(command) ? 0 : 1;
       }
     }

@@ -40,6 +40,7 @@
 #include <optional>
 #include <mutex>
 #include <condition_variable>
+#include <string_view>
 #include <thread>
 
 #include <boost/program_options/variables_map.hpp>
@@ -47,9 +48,9 @@
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "wallet/wallet2.h"
-#include "console_handler.h"
+#include "epee/console_handler.h"
 #include "common/periodic_task.h"
-#include "wipeable_string.h"
+#include "epee/wipeable_string.h"
 #include "common/i18n.h"
 #include "common/password.h"
 #include "crypto/crypto.h"  // for definition of crypto::secret_key
@@ -109,7 +110,7 @@ namespace cryptonote
         const std::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
     std::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm,
         const epee::wipeable_string &multisig_keys, const std::string &old_language);
-    std::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm);
+    std::optional<epee::wipeable_string> new_device_wallet(const boost::program_options::variables_map& vm);
     std::optional<epee::wipeable_string> open_wallet(const boost::program_options::variables_map& vm);
     bool close_wallet();
 
@@ -233,8 +234,12 @@ namespace cryptonote
     bool status(const std::vector<std::string> &args);
     bool wallet_info(const std::vector<std::string> &args);
     bool set_default_priority(const std::vector<std::string> &args);
+    bool sign_string(std::string_view value, const subaddress_index& index);
+    bool verify_string(std::string_view value, std::string_view address, std::string_view signature);
     bool sign(const std::vector<std::string> &args);
     bool verify(const std::vector<std::string> &args);
+    bool sign_value(const std::vector<std::string> &args);
+    bool verify_value(const std::vector<std::string> &args);
     bool export_key_images(const std::vector<std::string> &args);
     bool import_key_images(const std::vector<std::string> &args);
     bool hw_key_images_sync(const std::vector<std::string> &args);
@@ -402,16 +407,15 @@ namespace cryptonote
     };
 
   private:
-    std::string m_wallet_file;
-    std::string m_generate_new;
-    std::string m_generate_from_device;
-    std::string m_generate_from_view_key;
-    std::string m_generate_from_spend_key;
-    std::string m_generate_from_keys;
-    std::string m_generate_from_multisig_keys;
-    std::string m_generate_from_json;
+    fs::path m_wallet_file;
+    fs::path m_generate_new;
+    fs::path m_generate_from_device;
+    fs::path m_generate_from_view_key;
+    fs::path m_generate_from_spend_key;
+    fs::path m_generate_from_keys;
+    fs::path m_generate_from_multisig_keys;
+    fs::path m_generate_from_json;
     std::string m_mnemonic_language;
-    std::string m_import_path;
     std::string m_subaddress_lookahead;
     std::string m_restore_date;  // optional - converted to m_restore_height
 

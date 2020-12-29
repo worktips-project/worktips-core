@@ -82,8 +82,6 @@ int main(int argc, char* argv[])
 
   tools::on_startup();
 
-  boost::filesystem::path output_file_path;
-
   auto opt_size = command_line::boost_option_sizes();
 
   po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
@@ -160,7 +158,7 @@ int main(int argc, char* argv[])
   }
   LOG_PRINT_L0("database: LMDB");
 
-  const std::string filename = input;
+  const fs::path filename = fs::u8path(input);
   LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
 
   try
@@ -203,17 +201,15 @@ int main(int argc, char* argv[])
 
     for (const auto &in: tx.vin)
     {
-      if (!std::holds_alternative<txin_to_key>(in))
-        continue;
-      const auto& txin = std::get<txin_to_key>(in);
-      if (opt_rct_only && txin.amount != 0)
+      const auto* txin = std::get_if<txin_to_key>(&in);
+      if (!txin || (opt_rct_only && txin->amount != 0))
         continue;
 
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(txin.key_offsets);
-      for (size_t n = 0; n < txin.key_offsets.size(); ++n)
+      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(txin->key_offsets);
+      for (size_t n = 0; n < txin->key_offsets.size(); ++n)
       {
-        output_data od(txin.amount, absolute[n], coinbase, height);
-        outputs[od].push_back(reference(height, txin.key_offsets.size(), n));
+        output_data od(txin->amount, absolute[n], coinbase, height);
+        outputs[od].push_back(reference(height, txin->key_offsets.size(), n));
       }
     }
     return true;

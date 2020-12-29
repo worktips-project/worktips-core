@@ -48,7 +48,7 @@ namespace
       m_tx.version = version;
       m_tx.unlock_time = unlock_time;
 
-      m_tx_key = keypair::generate(hw::get_device("default"));
+      m_tx_key = keypair{hw::get_device("default")};
       add_tx_extra<tx_extra_pub_key>(m_tx, m_tx_key.pub);
     }
 
@@ -123,7 +123,7 @@ namespace
         m_tx.signatures.push_back(std::vector<crypto::signature>());
         std::vector<crypto::signature>& sigs = m_tx.signatures.back();
         sigs.resize(src_entr.outputs.size());
-        generate_ring_signature(m_tx_prefix_hash, std::get<txin_to_key>(m_tx.vin[i]).k_image, keys_ptrs, m_in_contexts[i].sec, src_entr.real_output, sigs.data());
+        generate_ring_signature(m_tx_prefix_hash, var::get<txin_to_key>(m_tx.vin[i]).k_image, keys_ptrs, m_in_contexts[i].sec, src_entr.real_output, sigs.data());
         i++;
       }
     }
@@ -171,7 +171,7 @@ namespace
   {
     crypto::key_image key_image;
     // a random key image plucked from the blockchain
-    if (!epee::string_tools::hex_to_pod("6b9f5d1be7c950dc6e4e258c6ef75509412ba9ecaaf90e6886140151d1365b5e", key_image))
+    if (!tools::hex_to_type("6b9f5d1be7c950dc6e4e258c6ef75509412ba9ecaaf90e6886140151d1365b5e", key_image))
       throw std::runtime_error("invalid key image wasn't found");
     return key_image;
   }
@@ -179,27 +179,6 @@ namespace
 
 //----------------------------------------------------------------------------------------------------------------------
 // Tests
-
-bool gen_tx_big_version::generate(std::vector<test_event_entry>& events) const
-{
-  uint64_t ts_start = 1338224400;
-
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
-  REWIND_BLOCKS_N(events, blk_money_unlocked, blk_tail, miner_account, 30);
-  REWIND_BLOCKS(events, blk_head, blk_money_unlocked, miner_account);
-
-  std::vector<tx_source_entry> sources;
-  std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_money_unlocked, miner_account, get_address(miner_account), MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
-
-  transaction tx = {};
-  loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), -1).build();
-  DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(tx);
-
-  return true;
-}
 
 bool gen_tx_unlock_time::generate(std::vector<test_event_entry>& events) const
 {
@@ -304,7 +283,7 @@ bool gen_tx_no_inputs_no_outputs::generate(std::vector<test_event_entry>& events
 
   transaction tx = {};
   tx.version     = cryptonote::txversion::v2_ringct;
-  add_tx_extra<tx_extra_pub_key>(tx, keypair::generate(hw::get_device("default")).pub);
+  add_tx_extra<tx_extra_pub_key>(tx, keypair{hw::get_device("default")}.pub);
 
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
@@ -386,7 +365,7 @@ bool gen_tx_input_wo_key_offsets::generate(std::vector<test_event_entry>& events
 
   transaction tx = {};
   loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::network_version_7).build();
-  txin_to_key& in_to_key = std::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key = var::get<txin_to_key>(tx.vin.front());
   while (!in_to_key.key_offsets.empty())
     in_to_key.key_offsets.pop_back();
 
@@ -418,7 +397,7 @@ bool gen_tx_key_offset_points_to_foreign_key::generate(std::vector<test_event_en
   std::vector<tx_destination_entry> destinations_alice;
   fill_tx_sources_and_destinations(events, blk_money_unlocked, alice_account, get_address(miner_account), MK_COINS(15) + 1 - TESTS_DEFAULT_FEE, TESTS_DEFAULT_FEE, CRYPTONOTE_DEFAULT_TX_MIXIN, sources_alice, destinations_alice);
 
-  txin_to_key& bob_in_to_key        = std::get<txin_to_key>(bob_tx.vin.front());
+  txin_to_key& bob_in_to_key        = var::get<txin_to_key>(bob_tx.vin.front());
   bob_in_to_key.key_offsets.front() = sources_alice.front().outputs.back().first;
 
   // TODO(loki): This used to be first(), but in the debugger bob's front() is
@@ -444,7 +423,7 @@ bool gen_tx_sender_key_offset_not_exist::generate(std::vector<test_event_entry>&
 
   transaction tx = {};
   loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::network_version_7).build();
-  txin_to_key& in_to_key        = std::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key        = var::get<txin_to_key>(tx.vin.front());
   in_to_key.key_offsets.front() = std::numeric_limits<uint64_t>::max();
 
   DO_CALLBACK(events, "mark_invalid_tx");
@@ -532,10 +511,10 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
 
   transaction tx = {};
   loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::network_version_7).build();
-  txin_to_key& in_to_key        = std::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key        = var::get<txin_to_key>(tx.vin.front());
 
   // Use fake key image
-  keypair keys = keypair::generate(hw::get_device("default"));
+  keypair keys{hw::get_device("default")};
   key_image fake_key_image;
   crypto::generate_key_image(keys.pub, keys.sec, fake_key_image);
   in_to_key.k_image = fake_key_image;
@@ -560,7 +539,7 @@ bool gen_tx_key_image_is_invalid::generate(std::vector<test_event_entry>& events
 
   transaction tx = {};
   loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::network_version_7).build();
-  txin_to_key& in_to_key = std::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key = var::get<txin_to_key>(tx.vin.front());
   in_to_key.k_image      = generate_invalid_key_image();
 
   // Tx with invalid key image can't be subscribed, so create empty signature
@@ -644,7 +623,7 @@ bool gen_tx_txout_to_key_has_invalid_key::generate(std::vector<test_event_entry>
 
   transaction tx           = {};
   loki_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::network_version_7).build();
-  txout_to_key& out_to_key = std::get<txout_to_key>(tx.vout.front().target);
+  txout_to_key& out_to_key = var::get<txout_to_key>(tx.vout.front().target);
   out_to_key.key           = generate_invalid_pub_key();
 
   DO_CALLBACK(events, "mark_invalid_tx");

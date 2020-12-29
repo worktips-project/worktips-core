@@ -33,6 +33,7 @@
 #include <device_trezor/device_trezor.hpp>
 #include <wallet/api/wallet2_api.h>
 #include "daemon.h"
+#include "common/fs.h"
 #include "../core_tests/chaingen.h"
 #include "../core_tests/wallet_tools.h"
 
@@ -150,11 +151,11 @@ protected:
 class tsx_builder {
 public:
   tsx_builder(): m_tester(nullptr), m_from(nullptr), m_account(0), m_mixin(TREZOR_TEST_MIXIN), m_fee(TREZOR_TEST_FEE),
-  m_rct_config({rct::RangeProofPaddedBulletproof, 1 }){}
+  m_rct_config({rct::RangeProofType::PaddedBulletproof, 1 }){}
 
   tsx_builder(gen_trezor_base * tester): m_tester(tester), m_from(nullptr), m_account(0),
   m_mixin(TREZOR_TEST_MIXIN), m_fee(TREZOR_TEST_FEE),
-  m_rct_config({rct::RangeProofPaddedBulletproof, 1 }){}
+  m_rct_config({rct::RangeProofType::PaddedBulletproof, 1 }){}
 
   tsx_builder * cur_height(uint64_t cur_height) { m_cur_height = cur_height; return this; }
   tsx_builder * mixin(size_t mixin=TREZOR_TEST_MIXIN) { m_mixin = mixin; return this; }
@@ -321,5 +322,5 @@ public:
   bool generate(std::vector<test_event_entry>& events) override;
 
 protected:
-  boost::filesystem::path m_wallet_dir;
+  fs::path m_wallet_dir;
 };

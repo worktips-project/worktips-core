@@ -43,11 +43,9 @@ target_link_libraries(daemon
     p2p
     cryptonote_protocol
     daemonizer
-    serialization
     daemon_rpc_server
     version
-    Boost::filesystem
+    filesystem
     Boost::program_options
-    Boost::system
     systemd
     extra)

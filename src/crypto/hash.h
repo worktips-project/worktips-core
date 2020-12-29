@@ -30,12 +30,11 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <iostream>
+#include <cstddef>
+#include <ostream>
 
 #include "generic-ops.h"
-#include "hex.h"
-#include "span.h"
+#include "common/hex.h"
 #include "crypto/cn_heavy_hash.hpp"
 
 namespace crypto {
@@ -72,6 +71,13 @@ namespace crypto {
 
   enum struct cn_slow_hash_type
   {
+#ifdef ENABLE_MONERO_SLOW_HASH
+    // NOTE: Monero's slow hash for Android only, we still use the old hashing algorithm for hashing the KeyStore containing private keys
+    cryptonight_v0,
+    cryptonight_v0_prehashed,
+    cryptonight_v1_prehashed,
+#endif
+
     heavy_v1,
     heavy_v2,
     turtle_lite_v2,
@@ -90,6 +96,26 @@ namespace crypto {
         else                                     v2.hash(data, length, hash.data);
       }
       break;
+
+#ifdef ENABLE_MONERO_SLOW_HASH
+      case cn_slow_hash_type::cryptonight_v0:
+      case cn_slow_hash_type::cryptonight_v1_prehashed:
+      {
+        int variant = 0, prehashed = 0;
+        if (type == cn_slow_hash_type::cryptonight_v1_prehashed)
+        {
+          prehashed = 1;
+          variant   = 1;
+        }
+        else if (type == cn_slow_hash_type::cryptonight_v0_prehashed)
+        {
+          prehashed = 1;
+        }
+
+        cn_monero_hash(data, length, hash.data, variant, prehashed);
+      }
+      break;
+#endif
 
       case cn_slow_hash_type::turtle_lite_v2:
       default:
@@ -131,10 +157,10 @@ namespace crypto {
   }
 
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash &v) {
-    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+    return o << '<' << tools::type_to_hex(v) << '>';
   }
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash8 &v) {
-    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+    return o << '<' << tools::type_to_hex(v) << '>';
   }
 
   constexpr inline crypto::hash null_hash = {};

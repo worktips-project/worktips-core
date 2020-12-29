@@ -28,12 +28,11 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
-#include "misc_language.h"
-#include "string_tools.h"
+#include "epee/misc_language.h"
+#include "epee/string_tools.h"
 
 using namespace cryptonote;
 
@@ -329,7 +328,7 @@ static void setup_chain(cryptonote::core * core, gen_trezor_base & trezor_base, 
 {
   std::vector<test_event_entry> events;
   const bool do_serialize = !chain_path.empty();
-  const bool chain_file_exists = do_serialize && boost::filesystem::exists(chain_path);
+  const bool chain_file_exists = do_serialize && fs::exists(chain_path);
   bool loaded = false;
   bool generated = false;
 
@@ -537,23 +536,23 @@ static cryptonote::address_parse_info init_addr_parse_info(cryptonote::account_p
 static void expand_tsx(cryptonote::transaction &tx)
 {
   auto & rv = tx.rct_signatures;
-  if (rv.type == rct::RCTTypeFull)
+  if (rv.type == rct::RCTType::Full)
   {
     rv.p.MGs.resize(1);
     rv.p.MGs[0].II.resize(tx.vin.size());
     for (size_t n = 0; n < tx.vin.size(); ++n)
-      rv.p.MGs[0].II[n] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
+      rv.p.MGs[0].II[n] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
   }
-  else if (tools::equals_any(rv.type, rct::RCTTypeSimple, rct::RCTTypeBulletproof, rct::RCTTypeBulletproof2))
+  else if (tools::equals_any(rv.type, rct::RCTType::Simple, rct::RCTType::Bulletproof, rct::RCTType::Bulletproof2))
   {
     CHECK_AND_ASSERT_THROW_MES(rv.p.MGs.size() == tx.vin.size(), "Bad MGs size");
     for (size_t n = 0; n < tx.vin.size(); ++n)
     {
       rv.p.MGs[n].II.resize(1);
-      rv.p.MGs[n].II[0] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
+      rv.p.MGs[n].II[0] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
     }
   }
-  else if (rv.type == rct::RCTTypeCLSAG)
+  else if (rv.type == rct::RCTType::CLSAG)
   {
     if (!tx.pruned)
     {
@@ -608,7 +607,7 @@ const std::string gen_trezor_base::m_alice_spend_private = m_master_seed_str;
 const std::string gen_trezor_base::m_alice_view_private = "a6ccd4ac344a295d1387f8d18c81bdd394f1845de84188e204514ef9370fd403";
 
 gen_trezor_base::gen_trezor_base(){
-  m_rct_config = {rct::RangeProofPaddedBulletproof, 1};
+  m_rct_config = {rct::RangeProofType::PaddedBulletproof, 1};
   m_test_get_tx_key = true;
   m_network_type = cryptonote::TESTNET;
 }
@@ -687,7 +686,7 @@ void gen_trezor_base::init_fields()
   DEFAULT_HARDFORKS(m_hard_forks);
 
   crypto::secret_key master_seed{};
-  CHECK_AND_ASSERT_THROW_MES(epee::string_tools::hex_to_pod(m_master_seed_str, master_seed), "Hexdecode fails");
+  CHECK_AND_ASSERT_THROW_MES(tools::hex_to_type(m_master_seed_str, master_seed), "Hexdecode fails");
 
   m_alice_account.generate(master_seed, true);
   m_alice_account.set_createtime(m_wallet_ts);
@@ -844,7 +843,7 @@ bool gen_trezor_base::generate(std::vector<test_event_entry>& events)
   bool res = wallet_tools::fill_tx_sources(m_wl_alice.get(), sources, TREZOR_TEST_MIXIN, std::nullopt, MK_COINS(2), m_bt, selected_transfers, num_blocks(events) - 1, 0, 1);
   CHECK_AND_ASSERT_THROW_MES(res, "TX Fill sources failed");
 
-  construct_tx_to_key(tx_1, m_wl_alice.get(), m_bob_account, MK_COINS(1), sources, TREZOR_TEST_FEE, true, rct::RangeProofPaddedBulletproof, 1);
+  construct_tx_to_key(tx_1, m_wl_alice.get(), m_bob_account, MK_COINS(1), sources, TREZOR_TEST_FEE, true, rct::RangeProofType::PaddedBulletproof, 1);
   events.push_back(tx_1);
   MAKE_NEXT_BLOCK_TX1_HF(events, blk_6, blk_5r, m_miner_account, tx_1, CUR_HF);
   MDEBUG("Post 1st tsx: " << (num_blocks(events) - 1) << " at block: " << get_block_hash(blk_6));
@@ -881,11 +880,11 @@ void gen_trezor_base::load(std::vector<test_event_entry>& events)
   {
     if (std::holds_alternative<cryptonote::block>(ev))
     {
-      m_head = std::get<cryptonote::block>(ev);
+      m_head = var::get<cryptonote::block>(ev);
     }
     else if (std::holds_alternative<cryptonote::account_base>(ev))  // accounts
     {
-      const auto & acc = std::get<cryptonote::account_base>(ev);
+      const auto & acc = var::get<cryptonote::account_base>(ev);
       if (acc_idx < accounts_num)
       {
         *accounts[acc_idx++] = acc;
@@ -893,7 +892,7 @@ void gen_trezor_base::load(std::vector<test_event_entry>& events)
     }
     else if (std::holds_alternative<event_replay_settings>(ev))  // hard forks
     {
-      const auto & rep_settings = std::get<event_replay_settings>(ev);
+      const auto & rep_settings = var::get<event_replay_settings>(ev);
       if (rep_settings.hard_forks)
       {
         const auto & hf = rep_settings.hard_forks.get();
@@ -1262,11 +1261,11 @@ void gen_trezor_base::set_hard_fork(uint8_t hf)
   if (hf < 9){
     throw std::runtime_error("Minimal supported Hardfork is 9");
   } else if (hf <= 11){
-    rct_config({rct::RangeProofPaddedBulletproof, 1});
+    rct_config({rct::RangeProofType::PaddedBulletproof, 1});
   } else if (hf == 12){
-    rct_config({rct::RangeProofPaddedBulletproof, 2});
+    rct_config({rct::RangeProofType::PaddedBulletproof, 2});
   } else if (hf == HF_VERSION_CLSAG){
-    rct_config({rct::RangeProofPaddedBulletproof, 3});
+    rct_config({rct::RangeProofType::PaddedBulletproof, 3});
   } else {
     throw std::runtime_error("Unsupported HF");
   }
@@ -1609,7 +1608,7 @@ bool gen_trezor_live_refresh::generate(std::vector<test_event_entry>& events)
     ::crypto::public_key pub_ver;
     ::crypto::key_image ki;
 
-    ::crypto::random32_unbiased((unsigned char*)r.data);
+    ::crypto::random_scalar((unsigned char*)r.data);
     ::crypto::secret_key_to_public_key(r, R);
     memcpy(D.data, rct::scalarmultKey(rct::pk2rct(R), rct::sk2rct(m_alice_account.get_keys().m_view_secret_key)).bytes, 32);
 
@@ -1832,17 +1831,17 @@ bool gen_trezor_many_utxo::generate(std::vector<test_event_entry>& events)
 
 void wallet_api_tests::init()
 {
-  m_wallet_dir = boost::filesystem::unique_path();
-  boost::filesystem::create_directories(m_wallet_dir);
+  m_wallet_dir = fs::unique_path();
+  fs::create_directories(m_wallet_dir);
 }
 
 wallet_api_tests::~wallet_api_tests()
 {
   try
   {
-    if (!m_wallet_dir.empty() && boost::filesystem::exists(m_wallet_dir))
+    if (!m_wallet_dir.empty() && fs::exists(m_wallet_dir))
     {
-      boost::filesystem::remove_all(m_wallet_dir);
+      fs::remove_all(m_wallet_dir);
     }
   }
   catch(...)

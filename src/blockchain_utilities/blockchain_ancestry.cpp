@@ -32,13 +32,13 @@
 
 #include <unordered_map>
 #include <unordered_set>
-#include <boost/filesystem.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/command_line.h"
 #include "common/varint.h"
 #include "common/signal_handler.h"
+#include "common/fs.h"
 #include "serialization/boost_std_variant.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -97,11 +97,8 @@ struct tx_data_t
       vin.reserve(tx.vin.size());
       for (size_t ring = 0; ring < tx.vin.size(); ++ring)
       {
-        if (std::holds_alternative<cryptonote::txin_to_key>(tx.vin[ring]))
-        {
-          const cryptonote::txin_to_key &txin = std::get<cryptonote::txin_to_key>(tx.vin[ring]);
-          vin.push_back(std::make_pair(txin.amount, cryptonote::relative_output_offsets_to_absolute(txin.key_offsets)));
-        }
+        if (const auto* txin = std::get_if<cryptonote::txin_to_key>(&tx.vin[ring]))
+          vin.push_back(std::make_pair(txin->amount, cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
         else
         {
           LOG_PRINT_L0("Bad vin type in txid " << get_transaction_hash(tx));
@@ -112,10 +109,9 @@ struct tx_data_t
     vout.reserve(tx.vout.size());
     for (size_t out = 0; out < tx.vout.size(); ++out)
     {
-      if (std::holds_alternative<cryptonote::txout_to_key>(tx.vout[out].target))
+      if (const auto* txout = std::get_if<cryptonote::txout_to_key>(&tx.vout[out].target))
       {
-        const auto &txout = std::get<cryptonote::txout_to_key>(tx.vout[out].target);
-        vout.push_back(txout.key);
+        vout.push_back(txout->key);
       }
       else
       {
@@ -295,10 +291,9 @@ static bool get_output_txid(ancestry_state_t &state, BlockchainDB *db, uint64_t 
 
   for (size_t out = 0; out < b.miner_tx.vout.size(); ++out)
   {
-    if (std::holds_alternative<cryptonote::txout_to_key>(b.miner_tx.vout[out].target))
+    if (const auto* txout = std::get_if<cryptonote::txout_to_key>(&b.miner_tx.vout[out].target))
     {
-      const auto &txout = std::get<cryptonote::txout_to_key>(b.miner_tx.vout[out].target);
-      if (txout.key == od.pubkey)
+      if (txout->key == od.pubkey)
       {
         txid = cryptonote::get_transaction_hash(b.miner_tx);
         if (opt_cache_outputs)
@@ -341,8 +336,6 @@ int main(int argc, char* argv[])
   uint32_t log_level = 0;
 
   tools::on_startup();
-
-  boost::filesystem::path output_file_path;
 
   auto opt_size = command_line::boost_option_sizes();
 
@@ -426,7 +419,7 @@ int main(int argc, char* argv[])
   uint64_t output_amount = 0, output_offset = 0;
   if (!opt_txid_string.empty())
   {
-    if (!epee::string_tools::hex_to_pod(opt_txid_string, opt_txid))
+    if (!tools::hex_to_type(opt_txid_string, opt_txid))
     {
       std::cerr << "Invalid txid" << std::endl;
       return 1;
@@ -452,7 +445,7 @@ int main(int argc, char* argv[])
   }
   LOG_PRINT_L0("database: LMDB");
 
-  const std::string filename = (boost::filesystem::path(opt_data_dir) / db->get_db_name()).string();
+  fs::path filename = fs::u8path(opt_data_dir) / db->get_db_name();
   LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
 
   try
@@ -473,9 +466,9 @@ int main(int argc, char* argv[])
 
   ancestry_state_t state;
 
-  const std::string state_file_path = (boost::filesystem::path(opt_data_dir) / "ancestry-state.bin").string();
+  fs::path state_file_path = fs::u8path(opt_data_dir) / "ancestry-state.bin";
   LOG_PRINT_L0("Loading state data from " << state_file_path);
-  std::ifstream state_data_in;
+  fs::ifstream state_data_in;
   state_data_in.open(state_file_path, std::ios_base::binary | std::ios_base::in);
   if (!state_data_in.fail())
   {

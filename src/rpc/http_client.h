@@ -5,9 +5,9 @@
 #include <shared_mutex>
 #include <string_view>
 
-#include "storages/portable_storage_template_helper.h"
-#include "net/jsonrpc_structs.h"
-#include "memwipe.h"
+#include "epee/storages/portable_storage_template_helper.h"
+#include "epee/net/jsonrpc_structs.h"
+#include "epee/memwipe.h"
 
 #include "common/meta.h"
 #include "version.h"
@@ -73,7 +73,7 @@ public:
   {
     if (!base_url_.empty())
       set_base_url(std::move(base_url_));
-    session.SetUserAgent("loki rpc client v"s + LOKI_VERSION_STR);
+    session.SetUserAgent("loki rpc client v" + std::string{LOKI_VERSION_STR});
   }
 
   /// Sets the base_url to the given one. Will have / appended if it doesn't already end in /.  The

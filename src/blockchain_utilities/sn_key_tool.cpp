@@ -12,6 +12,7 @@ extern "C" {
 #include <array>
 #include <cstring>
 #include <optional>
+#include "common/fs.h"
 
 std::string_view arg0;
 
@@ -75,7 +76,7 @@ restore-legacy [--overwrite] FILENAME
     return exit_code;
 }
 
-int error(int exit_code, std::string_view msg) {
+[[nodiscard]] int error(int exit_code, std::string_view msg) {
     std::cout << "\n" << msg << "\n\n";
     return exit_code;
 }
@@ -115,11 +116,8 @@ int generate(bool ed25519, std::list<std::string_view> args) {
     if (pubkey_pos != std::string::npos)
         overwrite = true;
 
-    if (!overwrite) {
-        std::ifstream f{filename};
-        if (f.good())
-            return error(2, filename + " to generate already exists, pass `--overwrite' if you want to overwrite it");
-    }
+    if (!overwrite && fs::exists(fs::u8path(filename)))
+        return error(2, filename + " to generate already exists, pass `--overwrite' if you want to overwrite it");
 
     std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> pubkey;
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> seckey;
@@ -140,7 +138,7 @@ int generate(bool ed25519, std::list<std::string_view> args) {
 
     if (pubkey_pos != std::string::npos)
         filename.replace(pubkey_pos, 6, lokimq::to_hex(pubkey.begin(), pubkey.end()));
-    std::ofstream out{filename, std::ios::trunc | std::ios::binary};
+    fs::ofstream out{fs::u8path(filename), std::ios::trunc | std::ios::binary};
     if (!out.good())
         return error(2, "Failed to open output file '" + filename + "': " + std::strerror(errno));
     if (ed25519)
@@ -191,10 +189,10 @@ int show(std::list<std::string_view> args) {
     else if (args.size() > 1)
         return error(2, "unknown arguments to 'show'");
 
-    std::string filename{args.front()};
-    std::ifstream in{filename, std::ios::binary};
+    fs::path filename = fs::u8path(args.front());
+    fs::ifstream in{filename, std::ios::binary};
     if (!in.good())
-        return error(2, "Unable to open '" + filename + "': " + std::strerror(errno));
+        return error(2, "Unable to open '" + filename.u8string() + "': " + std::strerror(errno));
 
     in.seekg(0, std::ios::end);
     auto size = in.tellg();
@@ -216,12 +214,12 @@ int show(std::list<std::string_view> args) {
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> seckey;
     in.read(reinterpret_cast<char*>(seckey.data()), size >= 64 ? 64 : 32);
     if (!in.good())
-        return error(2, "Failed to read from " + filename + ": " + std::strerror(errno));
+        return error(2, "Failed to read from " + filename.u8string() + ": " + std::strerror(errno));
 
     if (legacy) {
         pubkey = pubkey_from_privkey(seckey);
 
-        std::cout << filename << " (legacy SN keypair)" << "\n==========" <<
+        std::cout << filename.u8string() << " (legacy SN keypair)" << "\n==========" <<
             "\nPrivate key: " << lokimq::to_hex(seckey.begin(), seckey.begin() + 32) <<
             "\nPublic key:  " << lokimq::to_hex(pubkey.begin(), pubkey.end()) << "\n\n";
         return 0;
@@ -284,15 +282,16 @@ int restore(bool ed25519, std::list<std::string_view> args) {
         return error(7, "Invalid input: provide the secret key as 64 hex characters");
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> skey;
     std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> pubkey;
+    std::array<unsigned char, crypto_sign_SEEDBYTES> seed;
     std::optional<std::array<unsigned char, crypto_sign_PUBLICKEYBYTES>> pubkey_expected;
-    lokimq::from_hex(skey_hex.begin(), skey_hex.begin() + 64, skey.begin());
+    lokimq::from_hex(skey_hex.begin(), skey_hex.begin() + 64, seed.begin());
     if (skey_hex.size() == 128)
         lokimq::from_hex(skey_hex.begin() + 64, skey_hex.end(), pubkey_expected.emplace().begin());
 
     if (ed25519) {
-        crypto_sign_seed_keypair(pubkey.data(), skey.data(), skey.data());
+        crypto_sign_seed_keypair(pubkey.data(), skey.data(), seed.data());
     } else {
-        pubkey = pubkey_from_privkey(skey);
+        pubkey = pubkey_from_privkey(seed);
     }
 
     std::cout << "\nPublic key:      " << lokimq::to_hex(pubkey.begin(), pubkey.end()) << "\n";
@@ -312,25 +311,23 @@ int restore(bool ed25519, std::list<std::string_view> args) {
         std::cout << "\nIs this correct?  Press Enter to continue, Ctrl-C to cancel.\n";
         std::cin.getline(buf, 129);
         if (!std::cin.good())
-            error(99, "Aborted");
+            return error(99, "Aborted");
     }
 
     if (pubkey_pos != std::string::npos)
         filename.replace(pubkey_pos, 6, lokimq::to_hex(pubkey.begin(), pubkey.end()));
 
-    if (!overwrite) {
-        std::ifstream f{filename};
-        if (f.good())
-            return error(2, filename + " to generate already exists, pass `--overwrite' if you want to overwrite it");
-    }
+    auto filepath = fs::u8path(filename);
+    if (!overwrite && fs::exists(filepath))
+        return error(2, filename + " to generate already exists, pass `--overwrite' if you want to overwrite it");
 
-    std::ofstream out{filename, std::ios::trunc | std::ios::binary};
+    fs::ofstream out{filepath, std::ios::trunc | std::ios::binary};
     if (!out.good())
         return error(2, "Failed to open output file '" + filename + "': " + std::strerror(errno));
     if (ed25519)
         out.write(reinterpret_cast<const char*>(skey.data()), skey.size());
     else
-        out.write(reinterpret_cast<const char*>(skey.data()), 32);
+        out.write(reinterpret_cast<const char*>(seed.data()), seed.size());
 
     if (!out.good())
         return error(2, "Failed to write to output file '" + filename + "': " + std::strerror(errno));

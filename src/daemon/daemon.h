@@ -40,13 +40,18 @@
 #include "rpc/core_rpc_server.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
-#include "misc_log_ex.h"
+#include "epee/misc_log_ex.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize
 {
+
+// Parse an IP:PORT string into a {IP,PORT} pair.  Throws if the string value is not valid.  Accepts
+// both IPv4 and IPv6 addresses, but the latter must be specified in square brackets, e.g. [::1]:2345,
+// and will be returned *without* square brackets.
+std::pair<std::string, uint16_t> parse_ip_port(std::string_view ip_port, const std::string& argname);
 
 class daemon {
 public:
@@ -72,7 +77,7 @@ private:
   std::unique_ptr<protocol_handler> protocol;
   std::unique_ptr<node_server> p2p;
   std::unique_ptr<cryptonote::rpc::core_rpc_server> rpc;
-  std::list<std::pair<std::string, cryptonote::rpc::http_server>> http_rpcs;
+  std::optional<cryptonote::rpc::http_server> http_rpc_admin, http_rpc_public;
   std::unique_ptr<cryptonote::rpc::lmq_rpc> lmq_rpc;
 };
 

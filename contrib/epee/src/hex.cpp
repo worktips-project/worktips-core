@@ -26,7 +26,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "hex.h"
+#include "epee/hex.h"
 
 #include <iterator>
 #include <limits>
@@ -73,13 +73,6 @@ namespace epee
   void to_hex::buffer(std::ostream& out, const span<const std::uint8_t> src)
   {
     write_hex(std::ostreambuf_iterator<char>{out}, src);
-  }
-
-  void to_hex::formatted(std::ostream& out, const span<const std::uint8_t> src)
-  {
-    out.put('<');
-    buffer(out, src);
-    out.put('>');
   }
 
   void to_hex::buffer_unchecked(char* out, const span<const std::uint8_t> src) noexcept

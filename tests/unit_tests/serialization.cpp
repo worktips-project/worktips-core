@@ -111,7 +111,7 @@ void try_parse(std::string_view blob)
   return serialization::parse_binary(blob, s1);
 }
 
-TEST(Serialization, BinaryArchiveInts) {
+TEST(serialization, binary_archive_integers_fixed) {
   uint64_t x = 0xff00000000, x1;
 
   serialization::binary_string_archiver oar;
@@ -128,7 +128,7 @@ TEST(Serialization, BinaryArchiveInts) {
   ASSERT_EQ(x, x1);
 }
 
-TEST(Serialization, BinaryArchiveVarInts) {
+TEST(serialization, binary_archive_integers_variable) {
   uint64_t x = 0xff00000000, x1;
 
   serialization::binary_string_archiver oar;
@@ -144,7 +144,7 @@ TEST(Serialization, BinaryArchiveVarInts) {
   ASSERT_EQ(x, x1);
 }
 
-TEST(Serialization, Test1) {
+TEST(serialization, custom_type_serialization) {
   Struct1 s1;
   s1.si.push_back(0);
   {
@@ -169,7 +169,7 @@ TEST(Serialization, Test1) {
   ASSERT_THROW(try_parse(blob), std::runtime_error);
 }
 
-TEST(Serialization, Overflow) {
+TEST(serialization, overflow) {
   Blob x = { 0xff00000000 };
   Blob x1;
 
@@ -185,7 +185,7 @@ TEST(Serialization, Overflow) {
   ASSERT_EQ(0, bigvector.size());
 }
 
-TEST(Serialization, serializes_vector_uint64_as_varint)
+TEST(serialization, serializes_vector_uint64_as_varint)
 {
   std::vector<uint64_t> v;
   std::string blob;
@@ -240,7 +240,7 @@ TEST(Serialization, serializes_vector_uint64_as_varint)
   ASSERT_EQ(lokimq::to_hex(blob), "0364cc0184fe02");
 }
 
-TEST(Serialization, serializes_vector_int64_as_fixed_int)
+TEST(serialization, serializes_vector_int64_as_fixed_int)
 {
   std::vector<int64_t> v;
   std::string blob;
@@ -298,7 +298,7 @@ namespace
   }
 }
 
-TEST(Serialization, serializes_transaction_signatures_correctly)
+TEST(serialization, serializes_transaction_signatures_correctly)
 {
   using namespace cryptonote;
 
@@ -468,107 +468,91 @@ TEST(Serialization, serializes_transaction_signatures_correctly)
   ASSERT_THROW(serialization::parse_binary(blob, tx1), std::runtime_error);
 }
 
-TEST(Serialization, serializes_ringct_types)
+template <typename T>
+T round_trip(T& x)
 {
-  std::string blob;
-  rct::key key0, key1;
-  rct::keyV keyv0, keyv1;
-  rct::keyM keym0, keym1;
-  rct::ctkey ctkey0, ctkey1;
-  rct::ctkeyV ctkeyv0, ctkeyv1;
-  rct::ctkeyM ctkeym0, ctkeym1;
-  rct::ecdhTuple ecdh0, ecdh1;
-  rct::boroSig boro0, boro1;
-  rct::mgSig mg0, mg1;
-  rct::clsag clsag0, clsag1;
-  rct::Bulletproof bp0, bp1;
-  rct::rctSig s0, s1;
-  cryptonote::transaction tx0, tx1;
+  static_assert(!std::is_const_v<T>);
+  std::string blob = serialization::dump_binary(x);
+  T y;
+  serialization::parse_binary(blob, y);
+  return y;
+}
 
-  key0 = rct::skGen();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(key0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, key1));
-  ASSERT_TRUE(key0 == key1);
+TEST(serialization, serialize_rct_key) {
+  auto key = rct::skGen();
+  ASSERT_EQ(key, round_trip(key));
+}
 
-  keyv0 = rct::skvGen(30);
-  for (size_t n = 0; n < keyv0.size(); ++n)
-    keyv0[n] = rct::skGen();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(keyv0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, keyv1));
-  ASSERT_TRUE(keyv0.size() == keyv1.size());
-  for (size_t n = 0; n < keyv0.size(); ++n)
-  {
-    ASSERT_TRUE(keyv0[n] == keyv1[n]);
+TEST(serialization, serialize_rct_key_vector) {
+  auto keyv = rct::skvGen(30);
+  for (auto& key : keyv)
+    key = rct::skGen();
+  ASSERT_EQ(keyv, round_trip(keyv));
+}
+
+TEST(serialization, serialize_rct_key_matrix) {
+  auto keym = rct::keyMInit(9, 12);
+  for (auto& col : keym)
+    for (auto& key : col)
+      key = rct::skGen();
+  ASSERT_EQ(keym, round_trip(keym));
+}
+
+TEST(serialization, serialize_rct_ctkey) {
+  rct::ctkey key;
+  rct::skpkGen(key.dest, key.mask);
+  rct::ctkey key2 = round_trip(key);
+  ASSERT_EQ(tools::view_guts(key), tools::view_guts(key2));
+}
+
+TEST(serialization, serialize_rct_ctkey_vector) {
+  rct::ctkeyV keyv(14);
+  for (auto& key : keyv)
+    rct::skpkGen(key.dest, key.mask);
+  auto keyv2 = round_trip(keyv);
+  ASSERT_EQ(keyv.size(), keyv2.size());
+  for (size_t i = 0; i < keyv.size(); i++)
+    ASSERT_EQ(tools::view_guts(keyv[i]), tools::view_guts(keyv2[i]));
+}
+
+TEST(serialization, serialize_rct_ctkey_matrix) {
+  rct::ctkeyM keym(9);
+  for (auto& col : keym) {
+    col.resize(11);
+    for (auto& key : col)
+      rct::skpkGen(key.dest, key.mask);
   }
-
-  keym0 = rct::keyMInit(9, 12);
-  for (size_t n = 0; n < keym0.size(); ++n)
-    for (size_t i = 0; i < keym0[n].size(); ++i)
-      keym0[n][i] = rct::skGen();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(keym0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, keym1));
-  ASSERT_TRUE(keym0.size() == keym1.size());
-  for (size_t n = 0; n < keym0.size(); ++n)
-  {
-    ASSERT_TRUE(keym0[n].size() == keym1[n].size());
-    for (size_t i = 0; i < keym0[n].size(); ++i)
-    {
-      ASSERT_TRUE(keym0[n][i] == keym1[n][i]);
-    }
+  auto keym2 = round_trip(keym);
+  ASSERT_EQ(keym.size(), keym2.size());
+  for (size_t c = 0; c < keym.size(); c++) {
+    ASSERT_EQ(keym[c].size(), keym2[c].size());
+    for (size_t r = 0; r < keym[c].size(); r++)
+      ASSERT_EQ(tools::view_guts(keym[c][r]), tools::view_guts(keym2[c][r]));
   }
+}
 
-  rct::skpkGen(ctkey0.dest, ctkey0.mask);
-  ASSERT_NO_THROW(blob = serialization::dump_binary(ctkey0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, ctkey1));
-  ASSERT_TRUE(!memcmp(&ctkey0, &ctkey1, sizeof(ctkey0)));
+TEST(serialization, serialize_rct_ecdh) {
+  rct::ecdhTuple ecdh;
+  ecdh.mask = rct::skGen();
+  ecdh.amount = rct::skGen();
+  auto ecdh2 = round_trip(ecdh);
+  ASSERT_EQ(tools::view_guts(ecdh.mask), tools::view_guts(ecdh2.mask));
+  ASSERT_EQ(tools::view_guts(ecdh.amount), tools::view_guts(ecdh2.amount));
+}
 
-  ctkeyv0 = std::vector<rct::ctkey>(14);
-  for (size_t n = 0; n < ctkeyv0.size(); ++n)
-    rct::skpkGen(ctkeyv0[n].dest, ctkeyv0[n].mask);
-  ASSERT_NO_THROW(blob = serialization::dump_binary(ctkeyv0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, ctkeyv1));
-  ASSERT_TRUE(ctkeyv0.size() == ctkeyv1.size());
-  for (size_t n = 0; n < ctkeyv0.size(); ++n)
-  {
-    ASSERT_TRUE(!memcmp(&ctkeyv0[n], &ctkeyv1[n], sizeof(ctkeyv0[n])));
-  }
+TEST(serialization, serialize_boro_sig) {
+  rct::boroSig boro;
+  for (auto& s : boro.s0)
+    s = rct::skGen();
+  for (auto& s : boro.s1)
+    s = rct::skGen();
+  boro.ee = rct::skGen();
+  auto boro2 = round_trip(boro);
+  ASSERT_EQ(tools::view_guts(boro), tools::view_guts(boro2));
+}
 
-  ctkeym0 = std::vector<rct::ctkeyV>(9);
-  for (size_t n = 0; n < ctkeym0.size(); ++n)
-  {
-    ctkeym0[n] = std::vector<rct::ctkey>(11);
-    for (size_t i = 0; i < ctkeym0[n].size(); ++i)
-      rct::skpkGen(ctkeym0[n][i].dest, ctkeym0[n][i].mask);
-  }
-  ASSERT_NO_THROW(blob = serialization::dump_binary(ctkeym0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, ctkeym1));
-  ASSERT_TRUE(ctkeym0.size() == ctkeym1.size());
-  for (size_t n = 0; n < ctkeym0.size(); ++n)
-  {
-    ASSERT_TRUE(ctkeym0[n].size() == ctkeym1[n].size());
-    for (size_t i = 0; i < ctkeym0.size(); ++i)
-    {
-      ASSERT_TRUE(!memcmp(&ctkeym0[n][i], &ctkeym1[n][i], sizeof(ctkeym0[n][i])));
-    }
-  }
-
-  ecdh0.mask = rct::skGen();
-  ecdh0.amount = rct::skGen();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(ecdh0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, ecdh1));
-  ASSERT_TRUE(!memcmp(&ecdh0.mask, &ecdh1.mask, sizeof(ecdh0.mask)));
-  ASSERT_TRUE(!memcmp(&ecdh0.amount, &ecdh1.amount, sizeof(ecdh0.amount)));
-
-  for (size_t n = 0; n < 64; ++n)
-  {
-    boro0.s0[n] = rct::skGen();
-    boro0.s1[n] = rct::skGen();
-  }
-  boro0.ee = rct::skGen();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(boro0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, boro1));
-  ASSERT_TRUE(!memcmp(&boro0, &boro1, sizeof(boro0)));
-
+TEST(serialization, serializes_ringct)
+{
   // create a full rct signature to use its innards
   std::vector<uint64_t> inamounts;
   rct::ctkeyV sc, pc;
@@ -595,49 +579,20 @@ TEST(Serialization, serializes_ringct_types)
   amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
   rct::skpkGen(Sk, Pk);
   destinations.push_back(Pk);
-  //compute rct data with mixin 3
-  const rct::RCTConfig rct_config{ rct::RangeProofPaddedBulletproof, 2 };
-  s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
 
-  ASSERT_FALSE(s0.p.MGs.empty());
-  ASSERT_TRUE(s0.p.CLSAGs.empty());
-  mg0 = s0.p.MGs[0];
-  ASSERT_NO_THROW(blob = serialization::dump_binary(mg0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, mg1));
-  ASSERT_TRUE(mg0.ss.size() == mg1.ss.size());
-  for (size_t n = 0; n < mg0.ss.size(); ++n)
-  {
-    ASSERT_TRUE(mg0.ss[n] == mg1.ss[n]);
-  }
-  ASSERT_TRUE(mg0.cc == mg1.cc);
-
-  // mixRing and II are not serialized, they are meant to be reconstructed
-  ASSERT_TRUE(mg1.II.empty());
-
-  ASSERT_FALSE(s0.p.bulletproofs.empty());
-  bp0 = s0.p.bulletproofs.front();
-  ASSERT_NO_THROW(blob = serialization::dump_binary(bp0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, bp1));
-  bp1.V = bp0.V; // this is not saved, as it is reconstructed from other tx data
-  ASSERT_EQ(bp0, bp1);
-
-  const rct::RCTConfig rct_config_clsag{ rct::RangeProofPaddedBulletproof, 3 };
-  s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config_clsag, hw::get_device("default"));
+  const rct::RCTConfig rct_config_clsag{ rct::RangeProofType::PaddedBulletproof, 3 };
+  auto s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config_clsag, hw::get_device("default"));
 
   ASSERT_FALSE(s0.p.CLSAGs.empty());
   ASSERT_TRUE(s0.p.MGs.empty());
-  clsag0 = s0.p.CLSAGs[0];
 
-  ASSERT_NO_THROW(blob = serialization::dump_binary(clsag0));
-  ASSERT_NO_THROW(serialization::parse_binary(blob, clsag1));
-  ASSERT_TRUE(clsag0.s.size() == clsag1.s.size());
-  for (size_t n = 0; n < clsag0.s.size(); ++n)
-  {
-    ASSERT_TRUE(clsag0.s[n] == clsag1.s[n]);
-  }
-  ASSERT_TRUE(clsag0.c1 == clsag1.c1);
+  auto& clsag = s0.p.CLSAGs[0];
+  auto clsag1 = round_trip(clsag);
+
+  ASSERT_EQ(clsag.s, clsag1.s);
+  ASSERT_EQ(clsag.c1, clsag1.c1);
   // I is not serialized, they are meant to be reconstructed
-  ASSERT_TRUE(clsag0.D == clsag1.D);
+  ASSERT_EQ(clsag.D, clsag1.D);
 }
 
 // TODO(loki): These tests are broken because they rely on testnet which has
@@ -646,11 +601,11 @@ TEST(Serialization, serializes_ringct_types)
 //             - 2019-02-25 Doyle
 
 #if 0
-TEST(Serialization, portability_wallet)
+TEST(serialization, portability_wallet)
 {
   const cryptonote::network_type nettype = cryptonote::TESTNET;
   tools::wallet2 w(nettype);
-  const boost::filesystem::path wallet_file = unit_test::data_dir / "wallet_testnet";
+  const fs::path wallet_file = unit_test::data_dir / "wallet_testnet";
   std::string password = "test";
   bool r = false;
   try
@@ -680,25 +635,25 @@ TEST(Serialization, portability_wallet)
 
   ASSERT_TRUE(w.m_blockchain.size() == 11652);
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_blockchain[0]) == "da0d7c7824d82c15fc1e046259ce16a7d216e0c0f4406122e207127cf9a77bec");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_blockchain[1]) == "ca9fcde568ad56e01342fa951db7cd0b8f8bdb8a7bf64eb3aa16af79fd44cfab");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_blockchain[11635]) == "84adf6f5a518fcebfea31c304334f7f9358fed610b40034576c46a8c4870b310");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_blockchain[11636]) == "e991be0387c636496ebd224fa9d135dfa917c4b6129bfcfed1458b77666d8b5c");
+  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[0]) == "da0d7c7824d82c15fc1e046259ce16a7d216e0c0f4406122e207127cf9a77bec");
+  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[1]) == "ca9fcde568ad56e01342fa951db7cd0b8f8bdb8a7bf64eb3aa16af79fd44cfab");
+  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[11635]) == "84adf6f5a518fcebfea31c304334f7f9358fed610b40034576c46a8c4870b310");
+  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[11636]) == "e991be0387c636496ebd224fa9d135dfa917c4b6129bfcfed1458b77666d8b5c");
 
   // transfers (TODO)
   ASSERT_TRUE(w.m_transfers.size() == 3);
 
   // account public address
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_account_public_address.m_view_public_key) == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_account_public_address.m_spend_public_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
+  ASSERT_TRUE(tools::type_to_hex(w.m_account_public_address.m_view_public_key) == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
+  ASSERT_TRUE(tools::type_to_hex(w.m_account_public_address.m_spend_public_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
 
   // key images
   ASSERT_TRUE(w.m_key_images.size() == 3);
   {
     crypto::key_image ki[3];
-    epee::string_tools::hex_to_pod("05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11", ki[0]);
-    epee::string_tools::hex_to_pod("21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8", ki[1]);
-    epee::string_tools::hex_to_pod("92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d", ki[2]);
+    tools::hex_to_type("05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11", ki[0]);
+    tools::hex_to_type("21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8", ki[1]);
+    tools::hex_to_type("92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d", ki[2]);
     ASSERT_EQ_MAP(0, w.m_key_images, ki[0]);
     ASSERT_EQ_MAP(1, w.m_key_images, ki[1]);
     ASSERT_EQ_MAP(2, w.m_key_images, ki[2]);
@@ -712,8 +667,8 @@ TEST(Serialization, portability_wallet)
   {
     auto pd0 = w.m_payments.begin();
 
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd0->first) == "0000000000000000000000000000000000000000000000000000000000000000");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd0->second.m_tx_hash) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+    ASSERT_TRUE(tools::type_to_hex(pd0->first) == "0000000000000000000000000000000000000000000000000000000000000000");
+    ASSERT_TRUE(tools::type_to_hex(pd0->second.m_tx_hash) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
     ASSERT_TRUE(pd0->second.m_amount       == 100000000000);
     ASSERT_TRUE(pd0->second.m_block_height == 8478);
     ASSERT_TRUE(pd0->second.m_unlock_time  == 0);
@@ -732,8 +687,8 @@ TEST(Serialization, portability_wallet)
     {
       crypto::hash txid;
       crypto::secret_key txkey;
-      epee::string_tools::hex_to_pod(txid_txkey[i].first, txid);
-      epee::string_tools::hex_to_pod(txid_txkey[i].second, txkey);
+      tools::hex_to_type(txid_txkey[i].first, txid);
+      tools::hex_to_type(txid_txkey[i].second, txkey);
       ASSERT_EQ_MAP(txkey, w.m_tx_keys, txid);
     }
   }
@@ -745,7 +700,7 @@ TEST(Serialization, portability_wallet)
   ASSERT_TRUE(w.m_tx_notes.size() == 1);
   {
     crypto::hash h[1];
-    epee::string_tools::hex_to_pod("d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c", h[0]);
+    tools::hex_to_type("d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c", h[0]);
     ASSERT_EQ_MAP("Unconfirmed transaction test", w.m_tx_notes, h[0]);
   }
 
@@ -756,9 +711,9 @@ TEST(Serialization, portability_wallet)
   ASSERT_TRUE(w.m_pub_keys.size() == 3);
   {
     crypto::public_key pubkey[3];
-    epee::string_tools::hex_to_pod("cc6ac78ac21c034210dcce72a96909b8ba7abd1b3d3917b5ee0c5bc0fe1f6a55", pubkey[0]);
-    epee::string_tools::hex_to_pod("4cea6373d27bdde002a745ef025375e36ca4b1042c4defdaf2fc56a48ef67230", pubkey[1]);
-    epee::string_tools::hex_to_pod("b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbff", pubkey[2]);
+    tools::hex_to_type("cc6ac78ac21c034210dcce72a96909b8ba7abd1b3d3917b5ee0c5bc0fe1f6a55", pubkey[0]);
+    tools::hex_to_type("4cea6373d27bdde002a745ef025375e36ca4b1042c4defdaf2fc56a48ef67230", pubkey[1]);
+    tools::hex_to_type("b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbff", pubkey[2]);
     ASSERT_EQ_MAP(0, w.m_pub_keys, pubkey[0]);
     ASSERT_EQ_MAP(1, w.m_pub_keys, pubkey[1]);
     ASSERT_EQ_MAP(2, w.m_pub_keys, pubkey[2]);
@@ -769,32 +724,32 @@ TEST(Serialization, portability_wallet)
   {
     auto address_book_row = w.m_address_book.begin();
 <<<<<<< HEAD
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_spend_public_key) == "938fc84cbacb271fdbc9bfc34e9d887f4bdb89f20a9d4e2c05916d6b9f6a7cb8");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_view_public_key) == "9eec0bbb1728bce79209e1ae995cbae8e3f6cf78f7262b5db049594e4907bb33");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_payment_id) == "e0470453783dd65dc16bb740f82902b9a26a48216e4c89278586637011c858a3");
+    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "938fc84cbacb271fdbc9bfc34e9d887f4bdb89f20a9d4e2c05916d6b9f6a7cb8");
+    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "9eec0bbb1728bce79209e1ae995cbae8e3f6cf78f7262b5db049594e4907bb33");
+    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_payment_id) == "e0470453783dd65dc16bb740f82902b9a26a48216e4c89278586637011c858a3");
     ASSERT_TRUE(address_book_row->m_description == "A test address");
 =======
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
+    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
+    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
     ASSERT_TRUE(address_book_row->m_description == "testnet wallet 9y52S6");
 >>>>>>> a26e5b3
   }
 }
 
 #define OUTPUT_EXPORT_FILE_MAGIC "Loki output export\003"
-TEST(Serialization, portability_outputs)
+TEST(serialization, portability_outputs)
 {
   const bool restricted = false;
   tools::wallet2 w(cryptonote::TESTNET, restricted);
 
-  const boost::filesystem::path wallet_file = unit_test::data_dir / "wallet_testnet";
+  const fs::path wallet_file = unit_test::data_dir / "wallet_testnet";
   const std::string password = "test";
   w.load(wallet_file.string(), password);
 
   // read file
-  const boost::filesystem::path filename = unit_test::data_dir / "outputs";
+  const fs::path filename = unit_test::data_dir / "outputs";
   std::string data;
-  bool r = epee::file_io_utils::load_file_to_string(filename.string(), data);
+  bool r = tools::slurp_file(filename.string(), data);
 
   ASSERT_TRUE(r);
   const size_t magiclen = strlen(OUTPUT_EXPORT_FILE_MAGIC);
@@ -824,7 +779,7 @@ TEST(Serialization, portability_outputs)
     return plaintext;
   };
   crypto::secret_key view_secret_key;
-  epee::string_tools::hex_to_pod("cb979d21cde0fbcafb9ff083791a6771b750534948ede6d66058609884b27604", view_secret_key);
+  tools::hex_to_type("cb979d21cde0fbcafb9ff083791a6771b750534948ede6d66058609884b27604", view_secret_key);
   bool authenticated = true;
   data = decrypt(std::string(data, magiclen), view_secret_key, authenticated);
   ASSERT_FALSE(data.empty());
@@ -834,8 +789,8 @@ TEST(Serialization, portability_outputs)
   const crypto::public_key &public_spend_key = *(const crypto::public_key*)&data[0];
   const crypto::public_key &public_view_key = *(const crypto::public_key*)&data[sizeof(crypto::public_key)];
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(public_spend_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(public_view_key)  == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
+  ASSERT_TRUE(tools::type_to_hex(public_spend_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
+  ASSERT_TRUE(tools::type_to_hex(public_view_key)  == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
   r = false;
   std::vector<tools::wallet2::transfer_details> outputs;
 
@@ -881,9 +836,9 @@ TEST(Serialization, portability_outputs)
   ASSERT_TRUE(td0.m_block_height == 8478);
   ASSERT_TRUE(td1.m_block_height == 11034);
   ASSERT_TRUE(td2.m_block_height == 11651);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
   ASSERT_TRUE(td0.m_internal_output_index == 1);
   ASSERT_TRUE(td1.m_internal_output_index == 1);
   ASSERT_TRUE(td2.m_internal_output_index == 1);
@@ -896,12 +851,12 @@ TEST(Serialization, portability_outputs)
   ASSERT_TRUE(td0.m_spent_height == 11034);
   ASSERT_TRUE(td1.m_spent_height == 11651);
   ASSERT_TRUE(td2.m_spent_height == 0);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
   ASSERT_TRUE(td0.m_amount == 100000000000);
   ASSERT_TRUE(td1.m_amount == 47531982120);
   ASSERT_TRUE(td2.m_amount == 35464004140);
@@ -928,20 +883,20 @@ inline void serialize(Archive &a, unsigned_tx_set &x, const boost::serialization
   a & x.txes;
   a & x.transfers;
 }
-TEST(Serialization, portability_unsigned_tx)
+TEST(serialization, portability_unsigned_tx)
 {
   // TODO(loki): We updated testnet genesis, is broken
   const bool restricted = false;
   tools::wallet2 w(cryptonote::TESTNET, restricted);
 
-  const boost::filesystem::path filename    = unit_test::data_dir / "unsigned_loki_tx";
-  const boost::filesystem::path wallet_file = unit_test::data_dir / "wallet_testnet";
+  const fs::path filename    = unit_test::data_dir / "unsigned_loki_tx";
+  const fs::path wallet_file = unit_test::data_dir / "wallet_testnet";
   const std::string password = "test";
   w.load(wallet_file.string(), password);
 
   std::string s;
   const cryptonote::network_type nettype = cryptonote::TESTNET;
-  bool r = epee::file_io_utils::load_file_to_string(filename.string(), s);
+  bool r = tools::slurp_file(filename.string(), s);
   ASSERT_TRUE(r);
   size_t const magiclen = strlen(UNSIGNED_TX_PREFIX);
   ASSERT_FALSE(strncmp(s.c_str(), UNSIGNED_TX_PREFIX, magiclen));
@@ -1029,27 +984,27 @@ TEST(Serialization, portability_unsigned_tx)
   ASSERT_TRUE(out8.first == 23236);
   ASSERT_TRUE(out9.first == 23560);
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
+  ASSERT_TRUE(tools::type_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
+  ASSERT_TRUE(tools::type_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
+  ASSERT_TRUE(tools::type_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
+  ASSERT_TRUE(tools::type_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
+  ASSERT_TRUE(tools::type_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
+  ASSERT_TRUE(tools::type_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
+  ASSERT_TRUE(tools::type_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
+  ASSERT_TRUE(tools::type_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
+  ASSERT_TRUE(tools::type_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
+  ASSERT_TRUE(tools::type_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
 
   // tcd.sources[0].{real_output, real_out_tx_key, real_output_in_tx_index, amount, rct, mask}
   ASSERT_TRUE(tse.real_output == 9);
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
+  ASSERT_TRUE(tools::type_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
   ASSERT_TRUE(tse.real_output_in_tx_index == 1);
 
   ASSERT_TRUE(tse.amount == 35464004140);
   ASSERT_TRUE(tse.rct);
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::type_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
 
   // tcd.change_dts
   ASSERT_TRUE(tcd.change_dts.amount == 25396028820);
@@ -1092,9 +1047,9 @@ TEST(Serialization, portability_unsigned_tx)
   ASSERT_TRUE(td0.m_block_height == 8478);
   ASSERT_TRUE(td1.m_block_height == 11034);
   ASSERT_TRUE(td2.m_block_height == 11651);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
   ASSERT_TRUE(td0.m_internal_output_index == 1);
   ASSERT_TRUE(td1.m_internal_output_index == 1);
   ASSERT_TRUE(td2.m_internal_output_index == 1);
@@ -1107,12 +1062,12 @@ TEST(Serialization, portability_unsigned_tx)
   ASSERT_TRUE(td0.m_spent_height == 11034);
   ASSERT_TRUE(td1.m_spent_height == 11651);
   ASSERT_TRUE(td2.m_spent_height == 0);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::type_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
+  ASSERT_TRUE(tools::type_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
+  ASSERT_TRUE(tools::type_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
   ASSERT_TRUE(td0.m_amount == 100000000000);
   ASSERT_TRUE(td1.m_amount == 47531982120);
   ASSERT_TRUE(td2.m_amount == 35464004140);
@@ -1128,19 +1083,19 @@ TEST(Serialization, portability_unsigned_tx)
 }
 
 #define SIGNED_TX_PREFIX "Loki signed tx set\004"
-TEST(Serialization, portability_signed_tx)
+TEST(serialization, portability_signed_tx)
 {
   const bool restricted = false;
   tools::wallet2 w(cryptonote::TESTNET, restricted);
 
-  const boost::filesystem::path filename    = unit_test::data_dir / "signed_loki_tx";
-  const boost::filesystem::path wallet_file = unit_test::data_dir / "wallet_testnet";
+  const fs::path filename    = unit_test::data_dir / "signed_loki_tx";
+  const fs::path wallet_file = unit_test::data_dir / "wallet_testnet";
   const std::string password = "test";
   w.load(wallet_file.string(), password);
 
   const cryptonote::network_type nettype = cryptonote::TESTNET;
   std::string s;
-  bool r = epee::file_io_utils::load_file_to_string(filename.string(), s);
+  bool r = tools::slurp_file(filename.string(), s);
   ASSERT_TRUE(r);
   size_t const magiclen = strlen(SIGNED_TX_PREFIX);
   ASSERT_FALSE(strncmp(s.c_str(), SIGNED_TX_PREFIX, magiclen));
@@ -1203,7 +1158,7 @@ TEST(Serialization, portability_signed_tx)
 
   // ptx.{key_images, tx_key}
   ASSERT_TRUE(ptx.key_images == "<92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d> ");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(ptx.tx_key) == "0100000000000000000000000000000000000000000000000000000000000000");
+  ASSERT_TRUE(tools::type_to_hex(ptx.tx_key) == "0100000000000000000000000000000000000000000000000000000000000000");
 
   // ptx.dests
   ASSERT_TRUE(ptx.dests.size() == 1);
@@ -1239,24 +1194,24 @@ TEST(Serialization, portability_signed_tx)
   ASSERT_TRUE(out8.first == 23236);
   ASSERT_TRUE(out9.first == 23560);
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
+  ASSERT_TRUE(tools::type_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
+  ASSERT_TRUE(tools::type_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
+  ASSERT_TRUE(tools::type_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
+  ASSERT_TRUE(tools::type_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
+  ASSERT_TRUE(tools::type_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
+  ASSERT_TRUE(tools::type_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
+  ASSERT_TRUE(tools::type_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
+  ASSERT_TRUE(tools::type_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
+  ASSERT_TRUE(tools::type_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
+  ASSERT_TRUE(tools::type_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
 
   // ptx.construction_data.sources[0].{real_output, real_out_tx_key, real_output_in_tx_index, amount, rct, mask}
   ASSERT_TRUE(tse.real_output == 9);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
+  ASSERT_TRUE(tools::type_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
   ASSERT_TRUE(tse.real_output_in_tx_index == 1);
   ASSERT_TRUE(tse.amount == 35464004140);
   ASSERT_TRUE(tse.rct);
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::type_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
 
   // ptx.construction_data.change_dts
   ASSERT_TRUE(tcd.change_dts.amount == 25396028820);
@@ -1294,8 +1249,8 @@ TEST(Serialization, portability_signed_tx)
   auto& ki1 = exported_txs.key_images[1];
   auto& ki2 = exported_txs.key_images[2];
 
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(ki0) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(ki1) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(epee::string_tools::pod_to_hex(ki2) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::type_to_hex(ki0) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::type_to_hex(ki1) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::type_to_hex(ki2) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
 }
 #endif

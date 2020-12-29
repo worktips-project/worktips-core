@@ -3,8 +3,9 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "span.h"
+#include "epee/span.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "common/fs.h"
 #include <lokimq/hex.h>
 
 #include <cassert>
@@ -105,17 +106,17 @@ struct mapping_value
 };
 inline std::ostream &operator<<(std::ostream &os, mapping_value const &v) { return os << lokimq::to_hex(v.to_view()); }
 
-inline char const *mapping_type_str(mapping_type type)
+inline std::string_view mapping_type_str(mapping_type type)
 {
   switch(type)
   {
-    case mapping_type::lokinet:         return "lokinet"; // general type stored in the database; 1 year when in a purchase tx
-    case mapping_type::lokinet_2years:  return "lokinet_2years";  // Only used in a buy tx, not in the DB
-    case mapping_type::lokinet_5years:  return "lokinet_5years";  // "
-    case mapping_type::lokinet_10years: return "lokinet_10years"; // "
-    case mapping_type::session:         return "session";
-    case mapping_type::wallet:          return "wallet";
-    default: assert(false);             return "xx_unhandled_type";
+    case mapping_type::lokinet:         return "lokinet"sv; // general type stored in the database; 1 year when in a purchase tx
+    case mapping_type::lokinet_2years:  return "lokinet_2years"sv;  // Only used in a buy tx, not in the DB
+    case mapping_type::lokinet_5years:  return "lokinet_5years"sv;  // "
+    case mapping_type::lokinet_10years: return "lokinet_10years"sv; // "
+    case mapping_type::session:         return "session"sv;
+    case mapping_type::wallet:          return "wallet"sv;
+    default: assert(false);             return "xx_unhandled_type"sv;
   }
 }
 inline std::ostream &operator<<(std::ostream &os, mapping_type type) { return os << mapping_type_str(type); }
@@ -130,7 +131,7 @@ constexpr bool mapping_type_allowed(uint8_t hf_version, mapping_type type) {
 // relevant within a LNS buy tx).
 std::vector<mapping_type> all_mapping_types(uint8_t hf_version);
 
-sqlite3 *init_loki_name_system(char const *file_path, bool read_only);
+sqlite3 *init_loki_name_system(const fs::path& file_path, bool read_only);
 
 /// Returns the integer value used in the database and in RPC lookup calls for the given mapping
 /// type.  In particularly this maps all mapping_type::lokinet_Xyears values to the underlying value
@@ -161,12 +162,11 @@ std::optional<std::string> name_hash_input_to_base64(std::string_view input);
 
 bool validate_lns_name(mapping_type type, std::string name, std::string *reason = nullptr);
 
-generic_signature  make_monero_signature(crypto::hash const &hash, crypto::public_key const &pkey, crypto::secret_key const &skey);
 generic_signature  make_ed25519_signature(crypto::hash const &hash, crypto::ed25519_secret_key const &skey);
 generic_owner      make_monero_owner(cryptonote::account_public_address const &owner, bool is_subaddress);
 generic_owner      make_ed25519_owner(crypto::ed25519_public_key const &pkey);
 bool               parse_owner_to_generic_owner(cryptonote::network_type nettype, std::string_view owner, generic_owner &key, std::string *reason);
-crypto::hash       tx_extra_signature_hash(std::string_view value, generic_owner const *owner, generic_owner const *backup_owner, crypto::hash const &prev_txid);
+std::string        tx_extra_signature(std::string_view value, generic_owner const *owner, generic_owner const *backup_owner, crypto::hash const &prev_txid);
 
 enum struct lns_tx_type { lookup, buy, update, renew };
 // Converts a human readable case-insensitive string denoting the mapping type into a value suitable for storing into the LNS DB.

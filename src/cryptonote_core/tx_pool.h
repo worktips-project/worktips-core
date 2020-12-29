@@ -29,7 +29,6 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include "include_base_utils.h"
 
 #include <set>
 #include <unordered_map>
@@ -38,14 +37,13 @@
 #include <boost/serialization/version.hpp>
 #include <functional>
 
-#include "string_tools.h"
+#include "epee/string_tools.h"
 #include "common/periodic_task.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
 #include "blockchain_db/blockchain_db.h"
 #include "crypto/hash.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "rpc/message_data_structs.h"
 #include "tx_blink.h"
 #include "loki_economy.h"
 
@@ -442,18 +440,6 @@ namespace cryptonote
      * @return true
      */
     bool get_transactions_and_spent_keys_info(std::vector<rpc::tx_info>& tx_infos, std::vector<rpc::spent_key_image_info>& key_image_infos, std::function<void(const transaction& tx, rpc::tx_info&)> post_process = nullptr, bool include_sensitive_data = true) const;
-
-    /**
-     * @brief get information about all transactions and key images in the pool
-     *
-     * see documentation on tx_in_pool and key_images_with_tx_hashes for more details
-     *
-     * @param tx_infos [out] the transactions' information
-     * @param key_image_infos [out] the spent key images' information
-     *
-     * @return true
-     */
-    bool get_pool_for_rpc(std::vector<cryptonote::rpc::tx_in_pool>& tx_infos, cryptonote::rpc::key_images_with_tx_hashes& key_image_infos) const;
 
     /**
      * @brief check for presence of key images in the pool

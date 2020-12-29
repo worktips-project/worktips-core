@@ -32,9 +32,10 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/endian/conversion.hpp>
 
-#include "string_tools.h"
+#include "epee/string_tools.h"
 
 #include <unordered_set>
+#include <sstream>
 #include <iomanip>
 #include <lokimq/base32z.h>
 
@@ -53,11 +54,10 @@ extern "C" {
 #include "common/threadpool.h"
 #include "common/command_line.h"
 #include "common/hex.h"
-#include "warnings.h"
+#include "epee/warnings.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "misc_language.h"
-#include "file_io_utils.h"
+#include "epee/misc_language.h"
 #include <csignal>
 #include "checkpoints/checkpoints.h"
 #include "ringct/rctTypes.h"
@@ -65,9 +65,9 @@ extern "C" {
 #include "ringct/rctSigs.h"
 #include "common/notify.h"
 #include "version.h"
-#include "memwipe.h"
+#include "epee/memwipe.h"
 #include "common/i18n.h"
-#include "net/local_ip.h"
+#include "epee/net/local_ip.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -118,13 +118,13 @@ namespace cryptonote
   const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
     "data-dir"
   , "Specify data directory"
-  , tools::get_default_data_dir()
+  , tools::get_default_data_dir().u8string()
   , {{ &arg_testnet_on, &arg_devnet_on }}
   , [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val)->std::string {
       if (testnet_devnet[0])
-        return (boost::filesystem::path(val) / "testnet").string();
+        return (fs::u8path(val) / "testnet").u8string();
       else if (testnet_devnet[1])
-        return (boost::filesystem::path(val) / "devnet").string();
+        return (fs::u8path(val) / "devnet").u8string();
       return val;
     }
   };
@@ -279,7 +279,6 @@ namespace cryptonote
   , m_pprotocol(&m_protocol_stub)
   , m_starter_message_showed(false)
   , m_target_blockchain_height(0)
-  , m_checkpoints_path("")
   , m_last_json_checkpoints_update(0)
   , m_nettype(UNDEFINED)
   , m_last_storage_server_ping(0)
@@ -377,7 +376,7 @@ namespace cryptonote
       m_nettype = testnet ? TESTNET : devnet ? DEVNET : MAINNET;
     }
 
-    m_config_folder = command_line::get_arg(vm, arg_data_dir);
+    m_config_folder = fs::u8path(command_line::get_arg(vm, arg_data_dir));
 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
@@ -506,6 +505,27 @@ namespace cryptonote
     return std::to_string(seconds % 60) + "s";
   }
 
+  // Returns a bool on whether the service node is currently active
+  bool core::is_active_sn() const
+  {
+    auto info = get_my_sn_info();
+    return (info && info->is_active());
+  }
+
+  // Returns the service nodes info
+  std::shared_ptr<const service_nodes::service_node_info> core::get_my_sn_info() const
+  {
+    auto& snl = get_service_node_list();
+    const auto& pubkey = get_service_keys().pub;
+    auto states = snl.get_service_node_list_state({ pubkey });
+    if (states.empty())
+      return nullptr;
+    else
+    {
+      return states[0].info;
+    }
+  }
+
   // Returns a string for systemd status notifications such as:
   // Height: 1234567, SN: active, proof: 55m12s, storage: 4m48s, lokinet: 47s
   std::string core::get_status_string() const
@@ -616,16 +636,19 @@ namespace cryptonote
       m_service_node_list.set_my_service_node_keys(&m_service_keys);
     }
 
-    boost::filesystem::path folder(m_config_folder);
+    auto folder = m_config_folder;
     if (m_nettype == FAKECHAIN)
       folder /= "fake";
 
     // make sure the data directory exists, and try to lock it
-    CHECK_AND_ASSERT_MES (boost::filesystem::exists(folder) || boost::filesystem::create_directories(folder), false,
-      std::string("Failed to create directory ").append(folder.string()).c_str());
+    if (std::error_code ec; !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec)
+    {
+      MERROR("Failed to create directory " + folder.u8string() + (ec ? ": " + ec.message() : ""s));
+      return false;
+    }
 
     std::unique_ptr<BlockchainDB> db(new_db());
-    if (db == NULL)
+    if (!db)
     {
       LOG_ERROR("Failed to initialize a database");
       return false;
@@ -634,9 +657,8 @@ namespace cryptonote
     auto lns_db_file_path = folder / "lns.db";
 
     folder /= db->get_db_name();
-    MGINFO("Loading blockchain from folder " << folder.string() << " ...");
+    MGINFO("Loading blockchain from folder " << folder << " ...");
 
-    const std::string filename = folder.string();
     // default to fast:async:1 if overridden
     blockchain_db_sync_mode sync_mode = db_defaultsync;
     bool sync_on_blocks = true;
@@ -646,12 +668,12 @@ namespace cryptonote
     if (m_nettype == FAKECHAIN && !keep_fakechain)
     {
       // reset the db by removing the database file before opening it
-      if (!db->remove_data_file(filename))
+      if (!db->remove_data_file(folder))
       {
-        MERROR("Failed to remove data file in " << filename);
+        MERROR("Failed to remove data file in " << folder);
         return false;
       }
-      boost::filesystem::remove(lns_db_file_path);
+      fs::remove(lns_db_file_path);
     }
 #endif
 
@@ -732,7 +754,7 @@ namespace cryptonote
       if (db_salvage)
         db_flags |= DBF_SALVAGE;
 
-      db->open(filename, m_nettype, db_flags);
+      db->open(folder, m_nettype, db_flags);
       if(!db->m_open)
         return false;
     }
@@ -800,14 +822,9 @@ namespace cryptonote
     }
 
     // Checkpoints
-    {
-      auto data_dir = boost::filesystem::path(m_config_folder);
-      boost::filesystem::path json(JSON_HASH_FILE_NAME);
-      boost::filesystem::path checkpoint_json_hashfile_fullpath = data_dir / json;
-      m_checkpoints_path = checkpoint_json_hashfile_fullpath.string();
-    }
+    m_checkpoints_path = m_config_folder / fs::u8path(JSON_HASH_FILE_NAME);
 
-    sqlite3 *lns_db = lns::init_loki_name_system(lns_db_file_path.string().c_str(), db->is_read_only());
+    sqlite3 *lns_db = lns::init_loki_name_system(lns_db_file_path, db->is_read_only());
     if (!lns_db) return false;
 
     init_lokimq(vm);
@@ -863,16 +880,17 @@ namespace cryptonote
   ///              returns true for success/false for failure
   /// generate_pair - a void function taking (privkey &, pubkey &) that sets them to the generated values; can throw on error.
   template <typename Privkey, typename Pubkey, typename GetPubkey, typename GeneratePair>
-  bool init_key(const std::string &keypath, Privkey &privkey, Pubkey &pubkey, GetPubkey get_pubkey, GeneratePair generate_pair) {
-    if (epee::file_io_utils::is_file_exist(keypath))
+  bool init_key(const fs::path &keypath, Privkey &privkey, Pubkey &pubkey, GetPubkey get_pubkey, GeneratePair generate_pair) {
+    std::error_code ec;
+    if (fs::exists(keypath, ec))
     {
       std::string keystr;
-      bool r = epee::file_io_utils::load_file_to_string(keypath, keystr);
+      bool r = tools::slurp_file(keypath, keystr);
       memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
       memwipe(&keystr[0], keystr.size());
-      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath);
+      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath.u8string());
       CHECK_AND_ASSERT_MES(keystr.size() == sizeof(privkey), false,
-          "service node key file " + keypath + " has an invalid size");
+          "service node key file " + keypath.u8string() + " has an invalid size");
 
       r = get_pubkey(privkey, pubkey);
       CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
@@ -886,13 +904,10 @@ namespace cryptonote
         return false;
       }
 
-      std::string keystr(reinterpret_cast<const char *>(&privkey), sizeof(privkey));
-      bool r = epee::file_io_utils::save_string_to_file(keypath, keystr);
-      memwipe(&keystr[0], keystr.size());
-      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + keypath);
+      bool r = tools::dump_file(keypath, tools::view_guts(privkey));
+      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + keypath.u8string());
 
-      using namespace boost::filesystem;
-      permissions(keypath, owner_read);
+      fs::permissions(keypath, fs::perms::owner_read, ec);
     }
     return true;
   }
@@ -919,7 +934,7 @@ namespace cryptonote
     // only contains the private key value but not the secret key value that we need for full
     // Ed25519 signing).
     //
-    if (!init_key(m_config_folder + "/key_ed25519", keys.key_ed25519, keys.pub_ed25519,
+    if (!init_key(m_config_folder / "key_ed25519", keys.key_ed25519, keys.pub_ed25519,
           [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk.data, sk.data); return true; },
           [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk.data, sk.data); })
        )
@@ -936,7 +951,7 @@ namespace cryptonote
     // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
     // (which rely on the seed for signing).
     if (m_service_node) {
-      if (!epee::file_io_utils::is_file_exist(m_config_folder + "/key")) {
+      if (std::error_code ec; !fs::exists(m_config_folder / "key", ec)) {
         epee::wipeable_string privkey_signhash;
         privkey_signhash.resize(crypto_hash_sha512_BYTES);
         unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
@@ -952,7 +967,7 @@ namespace cryptonote
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
           throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
         assert(0 == std::memcmp(keys.pub.data, keys.pub_ed25519.data, 32));
-      } else if (!init_key(m_config_folder + "/key", keys.key, keys.pub,
+      } else if (!init_key(m_config_folder / "key", keys.key, keys.pub,
           crypto::secret_key_to_public_key,
           [](crypto::secret_key &key, crypto::public_key &pubkey) {
             throw std::runtime_error{"Internal error: old-style public keys are no longer generated"};
@@ -1084,6 +1099,9 @@ namespace cryptonote
                          std::chrono::milliseconds(500),
                          false,
                          m_pulse_thread_id);
+        m_lmq->add_timer([this]() {this->check_service_node_time();},
+                         5s,
+                         false);
       }
       m_lmq->start();
   }
@@ -1215,14 +1233,14 @@ namespace cryptonote
         continue;
       const rct::rctSig &rv = tx_info[n].tx.rct_signatures;
       switch (rv.type) {
-        case rct::RCTTypeNull:
+        case rct::RCTType::Null:
           // coinbase should not come here, so we reject for all other types
           MERROR_VER("Unexpected Null rctSig type");
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           tx_info[n].result = false;
           break;
-        case rct::RCTTypeSimple:
+        case rct::RCTType::Simple:
           if (!rct::verRctSemanticsSimple(rv))
           {
             MERROR_VER("rct signature semantics check failed");
@@ -1232,7 +1250,7 @@ namespace cryptonote
             break;
           }
           break;
-        case rct::RCTTypeFull:
+        case rct::RCTType::Full:
           if (!rct::verRct(rv, true))
           {
             MERROR_VER("rct signature semantics check failed");
@@ -1242,9 +1260,9 @@ namespace cryptonote
             break;
           }
           break;
-        case rct::RCTTypeBulletproof:
-        case rct::RCTTypeBulletproof2:
-        case rct::RCTTypeCLSAG:
+        case rct::RCTType::Bulletproof:
+        case rct::RCTType::Bulletproof2:
+        case rct::RCTType::CLSAG:
           if (!is_canonical_bulletproof_layout(rv.p.bulletproofs))
           {
             MERROR_VER("Bulletproof does not have canonical form");
@@ -1256,7 +1274,7 @@ namespace cryptonote
           rvv.push_back(&rv); // delayed batch verification
           break;
         default:
-          MERROR_VER("Unknown rct type: " << rv.type);
+          MERROR_VER("Unknown rct type: " << (int)rv.type);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           tx_info[n].result = false;
@@ -1638,6 +1656,61 @@ namespace cryptonote
       return false;
     }
 
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::check_service_node_time()
+  {
+
+    if(!is_active_sn()) {return true;}
+
+    crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
+    crypto::x25519_public_key x_pkey{0};
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9,0,0};
+    std::array<uint16_t,3> proofversion;
+    m_service_node_list.access_proof(pubkey, [&](auto &proof) { 
+      x_pkey = proof.pubkey_x25519; 
+      proofversion = proof.version;
+    });
+
+    if (proofversion >= MIN_TIMESTAMP_VERSION && x_pkey) {
+      m_lmq->request(
+        tools::view_guts(x_pkey),
+        "quorum.timestamp",
+        [this, pubkey](bool success, std::vector<std::string> data) {
+          const time_t local_seconds = time(nullptr);
+          MDEBUG("Timestamp message received: " << data[0] <<", local time is: " << local_seconds);
+          if(success){ 
+            int64_t received_seconds;
+            if (tools::parse_int(data[0],received_seconds)){
+              uint16_t variance;
+              if (received_seconds > local_seconds + 65535 || received_seconds < local_seconds - 65535) {
+                variance = 65535;
+              } else {
+                variance = std::abs(local_seconds - received_seconds);
+              }
+              std::lock_guard<std::mutex> lk(m_sn_timestamp_mutex);
+              // Records the variance into the record of our performance (m_sn_times)
+              service_nodes::timesync_entry entry{variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC};
+              m_sn_times.add(entry); 
+
+              // Counts the number of times we have been out of sync
+              uint8_t num_sn_out_of_sync = std::count_if(m_sn_times.begin(), m_sn_times.end(), 
+                [](const service_nodes::timesync_entry entry) { return !entry.in_sync; });
+              if (num_sn_out_of_sync > (m_sn_times.array.size() * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC/100)) {
+                MWARNING("service node time might be out of sync");
+                // If we are out of sync record the other service node as in sync
+                m_service_node_list.record_timesync_status(pubkey, true);
+              } else {
+                m_service_node_list.record_timesync_status(pubkey, variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
+              }
+            } else {
+              success = false;
+            }
+          }
+          m_service_node_list.record_timestamp_participation(pubkey, success);
+        });
+    }
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -2212,12 +2285,31 @@ namespace cryptonote
           return;
 
         auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
-        if (pubkey != crypto::null_pkey && pubkey != m_service_keys.pub)
+        if (pubkey != crypto::null_pkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
         {
           MGINFO_RED(
               "Failed to submit uptime proof: another service node on the network is using the same ed/x25519 keys as "
               "this service node. This typically means both have the same 'key_ed25519' private key file.");
           return;
+        }
+
+        {
+          std::vector<crypto::public_key> sn_pks;
+          auto sns = m_service_node_list.get_service_node_list_state();
+          sn_pks.reserve(sns.size());
+          for (const auto& sni : sns)
+            sn_pks.push_back(sni.pubkey);
+
+          m_service_node_list.for_each_service_node_info_and_proof(sn_pks.begin(), sn_pks.end(), [&](auto& pk, auto& sni, auto& proof) {
+            if (pk != m_service_keys.pub && proof.public_ip == m_sn_public_ip &&
+                (proof.quorumnet_port == m_quorumnet_port || proof.storage_port == m_storage_port || proof.storage_port == m_storage_lmq_port))
+            MGINFO_RED(
+                "Another service node (" << pk << ") is broadcasting the same public IP and ports as this service node (" <<
+                epee::string_tools::get_ip_string_from_int32(m_sn_public_ip) << ":" << proof.quorumnet_port << "[qnet], :" <<
+                proof.storage_port << "[SS-HTTP], :" << proof.storage_lmq_port << "[SS-LMQ]). "
+                "This will lead to deregistration of one or both service nodes if not corrected. "
+                "(Do both service nodes have the correct IP for the service-node-public-ip setting?)");
+          });
         }
 
         if (m_nettype != DEVNET)
@@ -2472,9 +2564,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   uint64_t core::get_free_space() const
   {
-    boost::filesystem::path path(m_config_folder);
-    boost::filesystem::space_info si = boost::filesystem::space(path);
-    return si.available;
+    return fs::space(m_config_folder).available;
   }
   //-----------------------------------------------------------------------------------------------
   std::shared_ptr<const service_nodes::quorum> core::get_quorum(service_nodes::quorum_type type, uint64_t height, bool include_old, std::vector<std::shared_ptr<const service_nodes::quorum>> *alt_states) const

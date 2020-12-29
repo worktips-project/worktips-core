@@ -41,6 +41,7 @@
 #include <lokimq/hex.h>
 #include <shared_mutex>
 #include <iterator>
+#include <time.h>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "qnet"
@@ -469,11 +470,11 @@ quorum_vote_t deserialize_vote(std::string_view v) {
     vote.group = get_enum<quorum_group>(d, "g");
     if (vote.group == quorum_group::invalid) throw std::invalid_argument("invalid vote group");
     vote.index_in_group = get_int<uint16_t>(d.at("i"));
-    auto &sig = std::get<std::string>(d.at("s"));
+    auto &sig = var::get<std::string>(d.at("s"));
     if (sig.size() != sizeof(vote.signature)) throw std::invalid_argument("invalid vote signature size");
     std::memcpy(&vote.signature, sig.data(), sizeof(vote.signature));
     if (vote.type == quorum_type::checkpointing) {
-        auto &bh = std::get<std::string>(d.at("bh"));
+        auto &bh = var::get<std::string>(d.at("bh"));
         if (bh.size() != sizeof(vote.checkpoint.block_hash.data)) throw std::invalid_argument("invalid vote checkpoint block hash");
         std::memcpy(vote.checkpoint.block_hash.data, bh.data(), sizeof(vote.checkpoint.block_hash.data));
     } else {
@@ -562,6 +563,12 @@ void handle_obligation_vote(Message& m, QnetState& qnet) {
     catch (const std::exception &e) {
         MWARNING("Deserialization of vote from " << to_hex(m.conn.pubkey()) << " failed: " << e.what());
     }
+}
+
+void handle_timestamp(Message& m) {
+    MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
+    const time_t seconds = time(nullptr);
+    m.send_reply(std::to_string(seconds));
 }
 
 /// Gets an integer value out of a bt_dict, if present and fits (i.e. get_int<> succeeds); if not
@@ -877,7 +884,7 @@ void handle_blink(lokimq::Message& m, QnetState& qnet) {
             m.send_back("bl.nostart", bt_serialize(bt_dict{{"!", tag}, {"e", "No transaction included in blink request"sv}}));
         return;
     }
-    const std::string &tx_data = std::get<std::string>(t_it->second);
+    const std::string &tx_data = var::get<std::string>(t_it->second);
     MTRACE("Blink tx data is " << tx_data.size() << " bytes");
 
     // "hash" is optional -- it lets us short-circuit processing the tx if we've already seen it,
@@ -885,7 +892,7 @@ void handle_blink(lokimq::Message& m, QnetState& qnet) {
     // the hash if we haven't seen it before -- this is only used to skip propagation and
     // validation.
     crypto::hash tx_hash;
-    auto &tx_hash_str = std::get<std::string>(data.at("#"));
+    auto &tx_hash_str = var::get<std::string>(data.at("#"));
     bool already_approved = false, already_rejected = false;
     if (tx_hash_str.size() == sizeof(crypto::hash)) {
         std::memcpy(tx_hash.data, tx_hash_str.data(), sizeof(crypto::hash));
@@ -958,7 +965,7 @@ void handle_blink(lokimq::Message& m, QnetState& qnet) {
 
     auto btxptr = std::make_shared<blink_tx>(blink_height);
     auto &btx = *btxptr;
-    auto &tx = std::get<cryptonote::transaction>(btx.tx);
+    auto &tx = var::get<cryptonote::transaction>(btx.tx);
     // If any quorums are too small set the extra spaces to rejected (this also checks that no
     // quorums are too big).
     for (size_t qi = 0; qi < blink_quorums.size(); qi++)
@@ -1367,7 +1374,7 @@ void handle_blink_not_started(Message& m) {
     }
     auto data = bt_deserialize<bt_dict>(m.data[0]);
     auto tag = get_int<uint64_t>(data.at("!"));
-    auto& error = std::get<std::string>(data.at("e"));
+    auto& error = var::get<std::string>(data.at("e"));
 
     MINFO("Received no-start blink response: " << error);
 
@@ -1391,7 +1398,7 @@ void handle_blink_failure(Message &m) {
     // we sent it to rejected it then that remote can reply with a message.  That gets a bit
     // complicated, though, in terms of maintaining internal state (since the bl.bad is sent on
     // signature receipt, not at rejection time), so for now we don't include it.
-    //auto &error = std::get<std::string>(data.at("e"));
+    //auto &error = var::get<std::string>(data.at("e"));
 
     MINFO("Received blink failure response");
 
@@ -1704,6 +1711,8 @@ void setup_endpoints(cryptonote::core& core, void* obj) {
             // Receives blink tx signatures or rejections between quorum members (either original or
             // forwarded).  These are propagated by the receiver if new
             .add_command("blink_sign", [&qnet](Message& m) { handle_blink_signature(m, qnet); })
+            // Receives a request for the timestamp
+            .add_request_command("timestamp", [](Message& m) { handle_timestamp(m); })
             ;
 
         // blink.*: commands sent to blink quorum members from anyone (e.g. blink submission)
@@ -1750,6 +1759,7 @@ void setup_endpoints(cryptonote::core& core, void* obj) {
 
     lmq.add_command_alias("vote_ob", "quorum.vote_ob");
     lmq.add_command_alias("blink_sign", "quorum.blink_sign");
+    lmq.add_command_alias("timestamp", "quorum.timestamp");
     lmq.add_command_alias("blink", "blink.submit");
     lmq.add_command_alias("bl_nostart", "bl.nostart");
     lmq.add_command_alias("bl_bad", "bl.bad");

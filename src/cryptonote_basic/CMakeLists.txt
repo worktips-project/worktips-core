@@ -29,18 +29,19 @@
 
 add_library(cryptonote_basic
   account.cpp
+  cryptonote_basic.cpp
   cryptonote_basic_impl.cpp
   cryptonote_format_utils.cpp
   difficulty.cpp
   hardfork.cpp
-  miner.cpp)
+  miner.cpp
+  tx_extra.cpp)
 
 target_link_libraries(cryptonote_basic
   PRIVATE
     common
     device
-    Boost::date_time
     Boost::program_options
     Boost::serialization
-    Boost::filesystem
+    filesystem
     extra)

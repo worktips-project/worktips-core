@@ -49,8 +49,6 @@ int main(int argc, char* argv[])
 
   tools::on_startup();
 
-  boost::filesystem::path output_file_path;
-
   auto opt_size = command_line::boost_option_sizes();
 
   po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
@@ -98,7 +96,6 @@ int main(int argc, char* argv[])
 
   LOG_PRINT_L0("Starting...");
 
-  std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
   bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
   bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
   network_type net_type = opt_testnet ? TESTNET : opt_devnet ? DEVNET : MAINNET;
@@ -114,7 +111,7 @@ int main(int argc, char* argv[])
   crypto::hash opt_txid = crypto::null_hash;
   if (!opt_txid_string.empty())
   {
-    if (!epee::string_tools::hex_to_pod(opt_txid_string, opt_txid))
+    if (!tools::hex_to_type(opt_txid_string, opt_txid))
     {
       std::cerr << "Invalid txid" << std::endl;
       return 1;
@@ -132,7 +129,7 @@ int main(int argc, char* argv[])
   }
   LOG_PRINT_L0("database: LMDB");
 
-  const std::string filename = (boost::filesystem::path(opt_data_dir) / db->get_db_name()).string();
+  const fs::path filename = fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)) / db->get_db_name();
   LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
 
   try
@@ -209,11 +206,10 @@ int main(int argc, char* argv[])
             coinbase = true;
             goto done;
           }
-          if (std::holds_alternative<cryptonote::txin_to_key>(tx.vin[ring]))
+          if (auto* txin = std::get_if<cryptonote::txin_to_key>(&tx.vin[ring]))
           {
-            const auto& txin = std::get<cryptonote::txin_to_key>(tx.vin[ring]);
-            const uint64_t amount = txin.amount;
-            auto absolute_offsets = cryptonote::relative_output_offsets_to_absolute(txin.key_offsets);
+            const uint64_t amount = txin->amount;
+            auto absolute_offsets = cryptonote::relative_output_offsets_to_absolute(txin->key_offsets);
             for (uint64_t offset: absolute_offsets)
             {
               const output_data_t od = db->get_output_key(amount, offset);
@@ -229,10 +225,9 @@ int main(int argc, char* argv[])
               bool found = false;
               for (size_t out = 0; out < b.miner_tx.vout.size(); ++out)
               {
-                if (std::holds_alternative<cryptonote::txout_to_key>(b.miner_tx.vout[out].target))
+                if (auto* txout = std::get_if<cryptonote::txout_to_key>(&b.miner_tx.vout[out].target))
                 {
-                  const auto& txout = std::get<cryptonote::txout_to_key>(b.miner_tx.vout[out].target);
-                  if (txout.key == od.pubkey)
+                  if (txout->key == od.pubkey)
                   {
                     found = true;
                     new_txids.push_back(cryptonote::get_transaction_hash(b.miner_tx));
@@ -263,10 +258,9 @@ int main(int argc, char* argv[])
                 }
                 for (size_t out = 0; out < tx2.vout.size(); ++out)
                 {
-                  if (std::holds_alternative<cryptonote::txout_to_key>(tx2.vout[out].target))
+                  if (auto* txout = std::get_if<cryptonote::txout_to_key>(&tx2.vout[out].target))
                   {
-                    const auto& txout = std::get<cryptonote::txout_to_key>(tx2.vout[out].target);
-                    if (txout.key == od.pubkey)
+                    if (txout->key == od.pubkey)
                     {
                       found = true;
                       new_txids.push_back(block_txid);

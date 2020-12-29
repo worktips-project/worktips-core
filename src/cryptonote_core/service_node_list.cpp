@@ -29,7 +29,6 @@
 #include "cryptonote_config.h"
 #include "ringct/rctTypes.h"
 #include <functional>
-#include <random>
 #include <algorithm>
 #include <chrono>
 
@@ -40,17 +39,18 @@ extern "C" {
 }
 
 #include "ringct/rctSigs.h"
-#include "net/local_ip.h"
+#include "epee/net/local_ip.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/hardfork.h"
-#include "int-util.h"
+#include "epee/int-util.h"
 #include "common/scoped_message_writer.h"
 #include "common/i18n.h"
 #include "common/util.h"
 #include "common/random.h"
 #include "common/lock.h"
-#include "misc_os_dependent.h"
+#include "common/hex.h"
+#include "epee/misc_os_dependent.h"
 #include "blockchain.h"
 #include "service_node_quorum_cop.h"
 
@@ -355,10 +355,10 @@ namespace service_nodes
       throw invalid_contributions{"Failed to generate registration hash"};
 
     if (!crypto::check_key(service_node_key))
-      throw invalid_contributions{"Service Node Key was not a valid crypto key" + epee::string_tools::pod_to_hex(service_node_key)};
+      throw invalid_contributions{"Service Node Key was not a valid crypto key" + tools::type_to_hex(service_node_key)};
 
     if (!crypto::check_signature(hash, service_node_key, signature))
-      throw invalid_contributions{"Failed to validate service node with key:" + epee::string_tools::pod_to_hex(service_node_key) + " and hash: " + epee::string_tools::pod_to_hex(hash)};
+      throw invalid_contributions{"Failed to validate service node with key:" + tools::type_to_hex(service_node_key) + " and hash: " + tools::type_to_hex(hash)};
   }
 
   struct parsed_tx_contribution
@@ -385,18 +385,18 @@ namespace service_nodes
     {
       switch (tx.rct_signatures.type)
       {
-      case rct::RCTTypeSimple:
-      case rct::RCTTypeBulletproof:
-      case rct::RCTTypeBulletproof2:
-      case rct::RCTTypeCLSAG:
-        money_transferred = rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
-        break;
-      case rct::RCTTypeFull:
-        money_transferred = rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
-        break;
-      default:
-        LOG_PRINT_L0(__func__ << ": Unsupported rct type: " << (int)tx.rct_signatures.type);
-        return 0;
+          case rct::RCTType::Simple:
+          case rct::RCTType::Bulletproof:
+          case rct::RCTType::Bulletproof2:
+          case rct::RCTType::CLSAG:
+              money_transferred = rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+              break;
+          case rct::RCTType::Full:
+              money_transferred = rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+              break;
+          default:
+              LOG_PRINT_L0(__func__ << ": Unsupported rct type: " << (int)tx.rct_signatures.type);
+              return 0;
       }
     }
     catch (const std::exception &e)
@@ -519,7 +519,7 @@ namespace service_nodes
           }
 
           // Stealth address public key should match the public key referenced in the TX only if valid information is given.
-          const auto& out_to_key = std::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
+          const auto& out_to_key = var::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
           if (out_to_key.key != ephemeral_pub_key)
           {
             LOG_PRINT_L1("TX: Derived TX ephemeral key did not match tx stored key on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx) << " for output: " << output_index);
@@ -537,10 +537,9 @@ namespace service_nodes
         // The signer can try falsify the key image, but the equation used to
         // construct the key image is re-derived by the verifier, false key
         // images will not match the re-derived key image.
-        crypto::public_key const *ephemeral_pub_key_ptr = &ephemeral_pub_key;
         for (auto proof = key_image_proofs.proofs.begin(); proof != key_image_proofs.proofs.end(); proof++)
         {
-          if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
+          if (!crypto::check_key_image_signature(proof->key_image, ephemeral_pub_key, proof->signature))
             continue;
 
           contribution->locked_contributions.emplace_back(service_node_info::contribution_t::version_t::v0, ephemeral_pub_key, proof->key_image, transferred);
@@ -763,6 +762,8 @@ namespace service_nodes
           proof.effective_timestamp = block.timestamp;
           proof.checkpoint_participation.reset();
           proof.pulse_participation.reset();
+          proof.timestamp_participation.reset();
+          proof.timesync_status.reset();
         }
         return true;
       }
@@ -834,8 +835,8 @@ namespace service_nodes
       if (cit != contributor.locked_contributions.end())
       {
         // NOTE(loki): This should be checked in blockchain check_tx_inputs already
-        crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
-        if (crypto::check_signature(hash, cit->key_image_pub_key, unlock.signature))
+        if (crypto::check_signature(service_nodes::generate_request_stake_unlock_hash(unlock.nonce),
+                    cit->key_image_pub_key, unlock.signature))
         {
           duplicate_info(it->second).requested_unlock_height = unlock_height;
           return true;
@@ -1354,7 +1355,7 @@ namespace service_nodes
                                                                          height,
                                                                          hash,
                                                                          block.signatures,
-                                                                         block) == false;
+                                                                         &block) == false;
         }
 
         // NOTE: Check alt pulse quorums
@@ -1369,7 +1370,7 @@ namespace service_nodes
                                                         height,
                                                         hash,
                                                         block.signatures,
-                                                        block))
+                                                        &block))
             {
               failed_quorum_verify = false;
               break;
@@ -1397,7 +1398,7 @@ namespace service_nodes
                                                                   cryptonote::get_block_height(block),
                                                                   cryptonote::get_block_hash(block),
                                                                   block.signatures,
-                                                                  block);
+                                                                  &block);
       }
 
       if (quorum_verified)
@@ -1766,6 +1767,12 @@ namespace service_nodes
     }
 
     return get_pulse_entropy_for_next_block(db, top_block, pulse_round);
+  }
+
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db,
+                                                             uint8_t pulse_round)
+  {
+    return get_pulse_entropy_for_next_block(db, db.get_top_block(), pulse_round);
   }
 
   service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype,
@@ -2348,7 +2355,7 @@ namespace service_nodes
     r = crypto::derive_public_key(derivation, output_index, receiver.m_spend_public_key, out_eph_public_key);
     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< receiver.m_spend_public_key << ")");
 
-    if (std::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
+    if (var::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
     {
       MGINFO_RED("Invalid service node reward at output: " << output_index << ", output key, specifies wrong key");
       return false;
@@ -2878,7 +2885,7 @@ namespace service_nodes
 
     crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
     if (!proof.pubkey_ed25519)
-      REJECT_PROOF("required ed25519 auxiliary pubkey " << epee::string_tools::pod_to_hex(proof.pubkey_ed25519) << " not included in proof");
+      REJECT_PROOF("required ed25519 auxiliary pubkey " << proof.pubkey_ed25519 << " not included in proof");
 
     if (0 != crypto_sign_verify_detached(proof.sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof.pubkey_ed25519.data))
       REJECT_PROOF("ed25519 signature validation failed");
@@ -2970,6 +2977,16 @@ namespace service_nodes
     return crypto::null_pkey;
   }
 
+  crypto::public_key service_node_list::get_random_pubkey() {
+    std::lock_guard lock{m_sn_mutex};
+    auto it  = tools::select_randomly(m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
+    if(it != m_state.service_nodes_infos.end()) {
+      return it->first;
+    } else {
+      return m_state.service_nodes_infos.begin()->first;
+    }
+  }
+
   void service_node_list::initialize_x25519_map() {
     auto locks = tools::unique_locks(m_sn_mutex, m_x25519_map_mutex);
 
@@ -3047,6 +3064,32 @@ namespace service_nodes
     info.pulse_participation.add(entry);
   }
 
+  void service_node_list::record_timestamp_participation(crypto::public_key const &pubkey, bool participated)
+  {
+    std::lock_guard lock(m_sn_mutex);
+    if (!m_state.service_nodes_infos.count(pubkey))
+      return;
+
+    timestamp_participation_entry entry  = {};
+    entry.participated                = participated;
+
+    auto &info = proofs[pubkey];
+    info.timestamp_participation.add(entry);
+  }
+
+  void service_node_list::record_timesync_status(crypto::public_key const &pubkey, bool synced)
+  {
+    std::lock_guard lock(m_sn_mutex);
+    if (!m_state.service_nodes_infos.count(pubkey))
+      return;
+
+    timesync_entry entry  = {};
+    entry.in_sync                = synced;
+
+    auto &info = proofs[pubkey];
+    info.timesync_status.add(entry);
+  }
+
   bool service_node_list::set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value)
   {
     std::lock_guard lock(m_sn_mutex);
@@ -3118,6 +3161,11 @@ namespace service_nodes
 
         info.pulse_sorter.last_height_validating_in_quorum = info.last_reward_block_height;
         info.version = version_t::v5_pulse_recomm_credit;
+      }
+      if (info.version < version_t::v6_reassign_sort_keys)
+      {
+        info.pulse_sorter = {};
+        info.version      = version_t::v6_reassign_sort_keys;
       }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
@@ -3544,9 +3592,7 @@ namespace service_nodes
       stream << " " << args[i];
     }
 
-    stream << " " << exp_timestamp << " ";
-    stream << epee::string_tools::pod_to_hex(keys.pub) << " ";
-    stream << epee::string_tools::pod_to_hex(signature);
+    stream << " " << exp_timestamp << " " << tools::type_to_hex(keys.pub) << " " << tools::type_to_hex(signature);
 
     if (make_friendly)
     {
@@ -3570,60 +3616,70 @@ namespace service_nodes
   bool service_node_info::can_be_voted_on(uint64_t height) const
   {
     // If the SN expired and was reregistered since the height we'll be voting on it prematurely
-    if (!this->is_fully_funded() || this->registration_height >= height) return false;
-    if (this->is_decommissioned() && this->last_decommission_height >= height) return false;
-
-    if (this->is_active())
-    {
-      // NOTE: This cast is safe. The definition of is_active() is that active_since_height >= 0
-      assert(this->active_since_height >= 0);
-      if (static_cast<uint64_t>(this->active_since_height) >= height) return false;
+    if (!is_fully_funded()) {
+      MDEBUG("SN vote at height " << height << " invalid: not fully funded");
+      return false;
+    } else if (height <= registration_height) {
+      MDEBUG("SN vote at height " << height << " invalid: height <= reg height (" << registration_height << ")");
+      return false;
+    } else if (is_decommissioned() && height <= last_decommission_height) {
+      MDEBUG("SN vote at height " << height << " invalid: height <= last decomm height (" << last_decommission_height << ")");
+      return false;
+    } else if (is_active()) {
+      assert(active_since_height >= 0); // should be satisfied whenever is_active() is true
+      if (height <= static_cast<uint64_t>(active_since_height)) {
+        MDEBUG("SN vote at height " << height << " invalid: height <= active-since height (" << active_since_height << ")");
+        return false;
+      }
     }
 
+    MTRACE("SN vote at height " << height << " is valid.");
     return true;
   }
 
   bool service_node_info::can_transition_to_state(uint8_t hf_version, uint64_t height, new_state proposed_state) const
   {
-    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-    {
-      if (!can_be_voted_on(height))
+    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints) {
+      if (!can_be_voted_on(height)) {
+        MDEBUG("SN state transition invalid: " << height << " is not a valid vote height");
         return false;
+      }
 
-      if (proposed_state == new_state::deregister)
-      {
-        if (height <= this->registration_height)
+      if (proposed_state == new_state::deregister) {
+        if (height <= registration_height) {
+          MDEBUG("SN deregister invalid: vote height (" << height << ") <= registration_height (" << registration_height << ")");
           return false;
-      }
-      else if (proposed_state == new_state::ip_change_penalty)
-      {
-        if (height <= this->last_ip_change_height)
+        }
+      } else if (proposed_state == new_state::ip_change_penalty) {
+        if (height <= last_ip_change_height) {
+          MDEBUG("SN ip change penality invalid: vote height (" << height << ") <= last_ip_change_height (" << last_ip_change_height << ")");
           return false;
+        }
       }
-
-      if (this->is_decommissioned())
-      {
-        return proposed_state != new_state::decommission && proposed_state != new_state::ip_change_penalty;
-      }
-
-      return (proposed_state != new_state::recommission);
-    }
-    else
-    {
-      if (proposed_state == new_state::deregister)
-      {
-        if (height < this->registration_height) return false;
-      }
-
-      if (this->is_decommissioned())
-      {
-        return proposed_state != new_state::decommission && proposed_state != new_state::ip_change_penalty;
-      }
-      else
-      {
-        return (proposed_state != new_state::recommission);
+    } else { // pre-HF13
+      if (proposed_state == new_state::deregister) {
+        if (height < registration_height) {
+          MDEBUG("SN deregister invalid: vote height (" << height << ") < registration_height (" << registration_height << ")");
+          return false;
+        }
       }
     }
+
+    if (is_decommissioned()) {
+      if (proposed_state == new_state::decommission) {
+        MDEBUG("SN decommission invalid: already decommissioned");
+        return false;
+      } else if (proposed_state == new_state::ip_change_penalty) {
+        MDEBUG("SN ip change penalty invalid: currently decommissioned");
+        return false;
+      }
+      return true; // recomm or dereg
+    } else if (proposed_state == new_state::recommission) {
+      MDEBUG("SN recommission invalid: not recommissioned");
+      return false;
+    }
+    MTRACE("SN state change is valid");
+    return true;
   }
 
   payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
