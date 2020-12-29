@@ -78,6 +78,7 @@ namespace crypto {
     heavy_v1,
     heavy_v2,
     turtle_lite_v2,
+	chukwa_slow_hash,
   };
 
   inline void cn_slow_hash(const void *data, std::size_t length, hash &hash, cn_slow_hash_type type) {
