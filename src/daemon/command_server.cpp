@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020, The Loki Project
+// Copyright (c) 2018-2020, The Worktips Project
 // Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
@@ -33,10 +33,10 @@
 #include "string_tools.h"
 #include "daemon/command_server.h"
 
-#include "common/loki_integration_test_hooks.h"
+#include "common/worktips_integration_test_hooks.h"
 
-#undef LOKI_DEFAULT_LOG_CATEGORY
-#define LOKI_DEFAULT_LOG_CATEGORY "daemon"
+#undef WORKTIPS_DEFAULT_LOG_CATEGORY
+#define WORKTIPS_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize {
 
@@ -318,7 +318,7 @@ void command_server::init_commands(cryptonote::core_rpc_server* rpc_server)
     , "bc_dyn_stats <last_block_count>"
     , "Print the information about current blockchain dynamic state."
     );
-    // TODO(loki): Implement
+    // TODO(worktips): Implement
 #if 0
     m_command_lookup.set_handler(
       "update"
@@ -349,7 +349,7 @@ void command_server::init_commands(cryptonote::core_rpc_server* rpc_server)
     , [this](const auto &x) { return m_parser.version(x); }
     , "Print version information."
     );
-#if 0 // TODO(loki): Pruning not supported because of Service Node List
+#if 0 // TODO(worktips): Pruning not supported because of Service Node List
     m_command_lookup.set_handler(
       "prune_blockchain"
     , [this](const auto &x) { return m_parser.prune_blockchain(x); }
@@ -373,7 +373,7 @@ void command_server::init_commands(cryptonote::core_rpc_server* rpc_server)
     , "print_sn_state_changes <start_height> [end height]"
     , "Query the state changes between the range, omit the last argument to scan until the current block"
     );
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
     m_command_lookup.set_handler(
       "relay_votes_and_uptime", [rpc_server](const auto&) {
         rpc_server->on_relay_uptime_and_votes();
@@ -447,7 +447,7 @@ bool command_server::process_command(const std::vector<std::string>& cmd)
   return result;
 }
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
 #include <thread>
 #endif
 
@@ -455,7 +455,7 @@ bool command_server::start_handling(std::function<void(void)> exit_handler)
 {
   if (m_is_rpc) return false;
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
   auto handle_pipe = [&]()
   {
     // TODO(doyle): Hack, don't hook into input until the daemon has completely initialised, i.e. you can print the status
@@ -513,7 +513,7 @@ bool command_server::help(const std::vector<std::string>& args)
 std::string command_server::get_commands_str()
 {
   std::stringstream ss;
-  ss << "Loki '" << LOKI_RELEASE_NAME << "' (v" << LOKI_VERSION_FULL << ")" << std::endl;
+  ss << "Worktips '" << WORKTIPS_RELEASE_NAME << "' (v" << WORKTIPS_VERSION_FULL << ")" << std::endl;
   ss << "Commands:\n";
   m_command_lookup.for_each([&ss] (const std::string&, const std::string& usage, const std::string&) {
       ss << "  " << usage << "\n"; });

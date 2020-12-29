@@ -1,4 +1,5 @@
-# Copyright (c) 2018, The Loki Project
+# Copyright (c) 2019, The Worktips Project
+# Copyright (c) 2018-2020, The Loki Project
 # Copyright (c) 2014-2019, The Monero Project
 #
 # All rights reserved.
@@ -38,7 +39,7 @@ add_library(common
   error.cpp
   expect.cpp
   i18n.cpp
-  loki.cpp
+  worktips.cpp
   notify.cpp
   password.cpp
   perf_timer.cpp
@@ -69,7 +70,7 @@ add_dependencies(common generate_translations_header)
 target_link_libraries(common
   PUBLIC
     cncrypto
-    lokimq::lokimq
+    worktipsmq::worktipsmq
   PRIVATE
     libunbound
     Boost::regex

@@ -1,4 +1,5 @@
-# Copyright (c) 2018, The Loki Project
+# Copyright (c) 2019, The Worktips Project
+# Copyright (c) 2018-2020, The Loki Project
 # Copyright (c) 2014-2019, The Monero Project
 #
 # All rights reserved.
@@ -36,7 +37,7 @@ add_library(cryptonote_core
   service_node_quorum_cop.cpp
   service_node_swarm.cpp
   tx_blink.cpp
-  loki_name_system.cpp
+  worktips_name_system.cpp
   tx_pool.cpp
   tx_sanity_check.cpp
   miner.cpp

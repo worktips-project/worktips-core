@@ -83,7 +83,7 @@ namespace cryptonote
     void resume();
     void do_print_hashrate(bool do_hr);
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
     std::atomic<bool> m_debug_mine_singular_block;
     bool debug_mine_singular_block(const account_public_address& adr)
     {

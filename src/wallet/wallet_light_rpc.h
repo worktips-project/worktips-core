@@ -35,7 +35,7 @@
 namespace tools
 {
   //-----------------------------------------------
-  LOKI_RPC_DOC_INTROSPECT
+  WORKTIPS_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
   struct COMMAND_RPC_GET_ADDRESS_TXS
   {
@@ -73,8 +73,8 @@ namespace tools
         uint64_t id;                            // The transaction identifier.
         std::string hash;                       // The hash of this transaction.
         uint64_t timestamp;                     // The unix time at which the block was recorded into the blockchain.
-        uint64_t total_received;                // Total Loki received in atomic units.
-        uint64_t total_sent;                    // Total loki sent in atomic units.
+        uint64_t total_received;                // Total Worktips received in atomic units.
+        uint64_t total_sent;                    // Total worktips sent in atomic units.
         uint64_t unlock_time;                   // Unlock time in blocks.
         uint64_t height;                        // Block height transaction was made.
         std::list<spent_output> spent_outputs;  // List of spent outputs.
@@ -83,7 +83,7 @@ namespace tools
         bool mempool;                           // States if the transaction is sitting in the mempool. `true if the transaction is, `false` if not.
         uint32_t mixin;                         // The number of other signatures (aside from yours) in the ring signature that authorises the transaction.
 
-        // TODO(loki): Also the pay type, is it a stake? But since this is undocumented and not used, not implemented yet
+        // TODO(worktips): Also the pay type, is it a stake? But since this is undocumented and not used, not implemented yet
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(id)
@@ -105,7 +105,7 @@ namespace tools
       struct response_t
       {
         //std::list<std::string> txs_as_json;
-        uint64_t total_received;                 // Total Loki received in atomic units.
+        uint64_t total_received;                 // Total Worktips received in atomic units.
         uint64_t total_received_unlocked = 0;    // OpenMonero only
         uint64_t scanned_height;                 // 
         std::vector<transaction> transactions;
@@ -127,7 +127,7 @@ namespace tools
   };
 
 
-  LOKI_RPC_DOC_INTROSPECT
+  WORKTIPS_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
   struct COMMAND_RPC_GET_ADDRESS_INFO
   {
@@ -188,7 +188,7 @@ namespace tools
   };
 
 
-  LOKI_RPC_DOC_INTROSPECT
+  WORKTIPS_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
   struct COMMAND_RPC_GET_UNSPENT_OUTS
   {
@@ -263,7 +263,7 @@ namespace tools
 
   
   //-----------------------------------------------
-  LOKI_RPC_DOC_INTROSPECT
+  WORKTIPS_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_LOGIN
   {
       struct request_t
@@ -295,7 +295,7 @@ namespace tools
       typedef epee::misc_utils::struct_init<response_t> response;
   };
   //-----------------------------------------------
-  LOKI_RPC_DOC_INTROSPECT
+  WORKTIPS_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IMPORT_WALLET_REQUEST
   {
       struct request_t

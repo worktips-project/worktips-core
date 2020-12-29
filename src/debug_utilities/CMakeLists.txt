@@ -1,4 +1,5 @@
-# Copyright (c) 2018, The Loki Project
+# Copyright (c) 2019, The Worktips Project
+# Copyright (c) 2018-2020, The Loki Project
 # Copyright (c) 2014-2019, The Monero Project
 #
 # All rights reserved.
@@ -27,7 +28,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-loki_add_executable(cn_deserialize "loki-utils-deserialize"
+worktips_add_executable(cn_deserialize "worktips-utils-deserialize"
   cn_deserialize.cpp
   )
 
@@ -37,7 +38,7 @@ target_link_libraries(cn_deserialize
     p2p
     extra)
 
-loki_add_executable(object_sizes "loki-utils-object-sizes"
+worktips_add_executable(object_sizes "worktips-utils-object-sizes"
   object_sizes.cpp
   )
 
@@ -52,7 +53,7 @@ set(dns_checks_sources
   dns_checks.cpp
   )
 
-loki_add_executable(dns_checks "loki-utils-dns-checks" dns_checks.cpp)
+worktips_add_executable(dns_checks "worktips-utils-dns-checks" dns_checks.cpp)
 
 target_link_libraries(dns_checks
     PRIVATE

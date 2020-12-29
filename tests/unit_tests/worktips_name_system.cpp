@@ -1,9 +1,9 @@
 #include "gtest/gtest.h"
 
-#include "common/loki.h"
-#include "cryptonote_core/loki_name_system.h"
+#include "common/worktips.h"
+#include "cryptonote_core/worktips_name_system.h"
 
-TEST(loki_name_system, name_tests)
+TEST(worktips_name_system, name_tests)
 {
   struct name_test
   {
@@ -11,22 +11,22 @@ TEST(loki_name_system, name_tests)
     bool allowed;
   };
 
-  name_test const lokinet_names[] = {
-      {"a.loki", true},
-      {"domain.loki", true},
-      {"xn--tda.loki", true},
-      {"xn--Mchen-Ost-9db-u6b.loki", true},
+  name_test const worktipsnet_names[] = {
+      {"a.worktips", true},
+      {"domain.worktips", true},
+      {"xn--tda.worktips", true},
+      {"xn--Mchen-Ost-9db-u6b.worktips", true},
 
-      {"abc.domain.loki", false},
+      {"abc.domain.worktips", false},
       {"a", false},
       {"a.loko", false},
-      {"a domain name.loki", false},
-      {"-.loki", false},
-      {"a_b.loki", false},
-      {" a.loki", false},
-      {"a.loki ", false},
-      {" a.loki ", false},
-      {"localhost.loki", false},
+      {"a domain name.worktips", false},
+      {"-.worktips", false},
+      {"a_b.worktips", false},
+      {" a.worktips", false},
+      {"a.worktips ", false},
+      {" a.worktips ", false},
+      {"localhost.worktips", false},
       {"localhost", false},
   };
 
@@ -61,8 +61,8 @@ TEST(loki_name_system, name_tests)
   for (uint16_t type16 = 0; type16 < static_cast<uint16_t>(lns::mapping_type::_count); type16++)
   {
     auto type = static_cast<lns::mapping_type>(type16);
-    name_test const *names = lns::is_lokinet_type(type) ? lokinet_names : session_wallet_names;
-    size_t names_count     = lns::is_lokinet_type(type) ? loki::char_count(lokinet_names) : loki::char_count(session_wallet_names);
+    name_test const *names = lns::is_worktipsnet_type(type) ? worktipsnet_names : session_wallet_names;
+    size_t names_count     = lns::is_worktipsnet_type(type) ? worktips::char_count(worktipsnet_names) : worktips::char_count(session_wallet_names);
 
     for (size_t i = 0; i < names_count; i++)
     {
@@ -72,7 +72,7 @@ TEST(loki_name_system, name_tests)
   }
 }
 
-TEST(loki_name_system, value_encrypt_and_decrypt)
+TEST(worktips_name_system, value_encrypt_and_decrypt)
 {
   std::string name         = "my lns name";
   lns::mapping_value value = {};

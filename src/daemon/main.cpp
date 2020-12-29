@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2020, The Monero Project
-// Copyright (c)      2018, The Loki Project
+// Copyright (c)      2018, The Worktips Project
 //
 // All rights reserved.
 //
@@ -52,8 +52,8 @@
 #include "common/stack_trace.h"
 #endif // STACK_TRACE
 
-#undef LOKI_DEFAULT_LOG_CATEGORY
-#define LOKI_DEFAULT_LOG_CATEGORY "daemon"
+#undef WORKTIPS_DEFAULT_LOG_CATEGORY
+#define WORKTIPS_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace po = boost::program_options;
 namespace bf = boost::filesystem;
@@ -120,16 +120,16 @@ int main(int argc, char const * argv[])
 
     if (command_line::get_arg(vm, command_line::arg_help))
     {
-      std::cout << "Loki '" << LOKI_RELEASE_NAME << "' (v" << LOKI_VERSION_FULL << ")\n\n";
+      std::cout << "Worktips '" << WORKTIPS_RELEASE_NAME << "' (v" << WORKTIPS_VERSION_FULL << ")\n\n";
       std::cout << "Usage: " + std::string{argv[0]} + " [options|settings] [daemon_command...]" << std::endl << std::endl;
       std::cout << visible_options << std::endl;
       return 0;
     }
 
-    // Loki Version
+    // Worktips Version
     if (command_line::get_arg(vm, command_line::arg_version))
     {
-      std::cout << "Loki '" << LOKI_RELEASE_NAME << "' (v" << LOKI_VERSION_FULL << ")\n\n";
+      std::cout << "Worktips '" << WORKTIPS_RELEASE_NAME << "' (v" << WORKTIPS_VERSION_FULL << ")\n\n";
       return 0;
     }
 
@@ -175,7 +175,7 @@ int main(int argc, char const * argv[])
     }
 
     // data_dir
-    //   default: e.g. ~/.loki/ or ~/.loki/testnet
+    //   default: e.g. ~/.worktips/ or ~/.worktips/testnet
     //   if data-dir argument given:
     //     absolute path
     //     relative path: relative to cwd
@@ -220,7 +220,7 @@ int main(int argc, char const * argv[])
 
     // logging is now set up
     // FIXME: only print this when starting up as a daemon but not when running rpc commands
-    MGINFO_GREEN("Loki '" << LOKI_RELEASE_NAME << "' (v" << LOKI_VERSION_FULL << ")");
+    MGINFO_GREEN("Worktips '" << WORKTIPS_RELEASE_NAME << "' (v" << WORKTIPS_VERSION_FULL << ")");
 
     // If there are positional options, we're running a daemon command
     {
@@ -288,7 +288,7 @@ int main(int argc, char const * argv[])
 
     MINFO("Moving from main() into the daemonize now.");
 
-    return daemonizer::daemonize<daemonize::daemon>("Loki Daemon", argc, argv, std::move(vm))
+    return daemonizer::daemonize<daemonize::daemon>("Worktips Daemon", argc, argv, std::move(vm))
         ? 0 : 1;
   }
   catch (std::exception const & ex)

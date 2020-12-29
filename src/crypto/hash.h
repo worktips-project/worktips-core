@@ -37,12 +37,15 @@
 #include "hex.h"
 #include "span.h"
 #include "crypto/cn_heavy_hash.hpp"
+#include "argon2.h"
 
 namespace crypto {
 
   extern "C" {
 #include "hash-ops.h"
   }
+  
+  static bool argon2_optimization_selected = false;
 
   struct alignas(size_t) hash {
     char data[HASH_SIZE];
@@ -92,7 +95,6 @@ namespace crypto {
       break;
 
       case cn_slow_hash_type::turtle_lite_v2:
-      default:
       {
          const uint32_t CN_TURTLE_SCRATCHPAD = 262144;
          const uint32_t CN_TURTLE_ITERATIONS = 131072;
@@ -104,6 +106,38 @@ namespace crypto {
              0, // pre-hashed
              CN_TURTLE_SCRATCHPAD, CN_TURTLE_ITERATIONS);
       }
+      break;
+	    case cn_slow_hash_type::chukwa_slow_hash:
+      default:
+      {
+		 // Chukwa Common Definitions
+         const uint32_t CHUKWA_HASHLEN = 32; // The length of the resulting hash in bytes
+         const uint32_t CHUKWA_SALTLEN = 16; // The length of our salt in bytes
+		 
+		 // Chukwa v2 Definitions
+         const uint32_t CHUKWA_THREADS = 1; // How many threads to use at once
+         const uint32_t CHUKWA_ITERS = 4; // How many iterations we perform as part of our slow-hash
+         const uint32_t CHUKWA_MEMORY = 1024; // This value is in KiB (1.00MB)		 
+
+		 uint8_t salt[CHUKWA_SALTLEN];
+        memcpy(salt, data, sizeof(salt));
+
+        /* If this is the first time we've called this hash function then
+           we need to have the Argon2 library check to see if any of the
+           available CPU instruction sets are going to help us out */
+        if (!argon2_optimization_selected)
+        {
+            /* Call the library quick benchmark test to set which CPU
+               instruction sets will be used */
+            argon2_select_impl(NULL, NULL);
+
+            argon2_optimization_selected = true;
+        }
+
+        argon2id_hash_raw(
+            CHUKWA_ITERS, CHUKWA_MEMORY, CHUKWA_THREADS, data, length, salt, CHUKWA_SALTLEN, hash.data, CHUKWA_HASHLEN);
+
+      }	  
       break;
     }
   }

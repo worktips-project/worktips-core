@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Loki Project
+// Copyright (c) 2018-2020, The Loki Project
+// Copyright (c) 2019, The Worktips Project
 // 
 // All rights reserved.
 // 
@@ -26,11 +27,11 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef LOKI_H
-#define LOKI_H
+#ifndef WORKTIPS_H
+#define WORKTIPS_H
 
-#define LOKI_HOUR(val) ((val) * LOKI_MINUTES(60))
-#define LOKI_MINUTES(val) val * 60
+#define WORKTIPS_HOUR(val) ((val) * WORKTIPS_MINUTES(60))
+#define WORKTIPS_MINUTES(val) val * 60
 
 #include <cstddef>
 #include <cstdint>
@@ -38,8 +39,8 @@
 #include <iterator>
 #include <cassert>
 
-#define LOKI_RPC_DOC_INTROSPECT
-namespace loki
+#define WORKTIPS_RPC_DOC_INTROSPECT
+namespace worktips
 {
 double      round           (double);
 double      exp2            (double);
@@ -76,9 +77,9 @@ struct defer_helper
   deferred<lambda_t> operator+(lambda_t lambda) { return lambda; }
 };
 
-#define LOKI_TOKEN_COMBINE2(x, y) x ## y
-#define LOKI_TOKEN_COMBINE(x, y) LOKI_TOKEN_COMBINE2(x, y)
-#define LOKI_DEFER auto const LOKI_TOKEN_COMBINE(loki_defer_, __LINE__) = loki::defer_helper() + [&]()
+#define WORKTIPS_TOKEN_COMBINE2(x, y) x ## y
+#define WORKTIPS_TOKEN_COMBINE(x, y) WORKTIPS_TOKEN_COMBINE2(x, y)
+#define WORKTIPS_DEFER auto const WORKTIPS_TOKEN_COMBINE(worktips_defer_, __LINE__) = worktips::defer_helper() + [&]()
 
 template <typename T, size_t N>
 constexpr size_t array_count(T (&)[N]) { return N; }
@@ -86,6 +87,6 @@ constexpr size_t array_count(T (&)[N]) { return N; }
 template <typename T, size_t N>
 constexpr size_t char_count(T (&)[N]) { return N - 1; }
 
-}; // namespace Loki
+}; // namespace Worktips
 
-#endif // LOKI_H
+#endif // WORKTIPS_H

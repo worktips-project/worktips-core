@@ -1,4 +1,5 @@
-# Copyright (c) 2018, The Loki Project
+# Copyright (c) 2019, The Worktips Project
+# Copyright (c) 2018-2020, The Loki Project
 # Copyright (c) 2014-2019, The Monero Project
 #
 # All rights reserved.
@@ -43,17 +44,17 @@ endif()
 cmake_minimum_required(VERSION 3.7)
 message(STATUS "CMake version ${CMAKE_VERSION}")
 
-project(loki
-    VERSION 7.1.8
+project(worktips
+    VERSION 4.0.1
     LANGUAGES CXX C)
-set(LOKI_RELEASE_CODENAME "Valiant Vidar")
+set(WORKTIPS_RELEASE_CODENAME "Mark 4")
 
 # String value to append to the full version string; this is intended to easily identify whether a
 # binary was build from the release or development branches.  This should be permanently set to an
 # empty string on `master`, "-dev" on the `dev` branch, and can be set externally (via cmake
 # arguments) where it makes sense to take some other branch release with an extra value.
-if(NOT DEFINED LOKI_RELEASE_SUFFIX)
-  set(LOKI_RELEASE_SUFFIX "-dev")
+if(NOT DEFINED WORKTIPS_RELEASE_SUFFIX)
+  set(WORKTIPS_RELEASE_SUFFIX "-dev")
 endif()
 
 if(POLICY CMP0079)
@@ -232,7 +233,8 @@ if(NOT MANUAL_SUBMODULES)
     check_submodule(external/rapidjson)
     check_submodule(external/trezor-common)
     check_submodule(external/randomx)
-    check_submodule(external/loki-mq mapbox-variant cppzmq)
+	check_submodule(external/argon2)
+    check_submodule(external/worktips-mq mapbox-variant cppzmq)
   endif()
 endif()
 
@@ -315,7 +317,7 @@ endif()
 # elseif(CMAKE_SYSTEM_NAME MATCHES ".*BSDI.*")
 #   set(BSDI TRUE)
 
-include_directories(external/rapidjson/include src contrib/epee/include external)
+include_directories(external/rapidjson/include src contrib/epee/include external external/argon2 external/argon2/include)
 
 if(APPLE)
   include_directories(SYSTEM /usr/include/malloc)
@@ -526,7 +528,7 @@ else()
       add_definitions(-DWINVER=0x0501 -D_WIN32_WINNT=0x0501)
     endif()
   endif()
-  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes")
+  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
   set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
   try_compile(STATIC_ASSERT_RES "${CMAKE_CURRENT_BINARY_DIR}/static-assert" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-static-assert.c" COMPILE_DEFINITIONS "-std=c11")
   if(STATIC_ASSERT_RES)
@@ -617,7 +619,7 @@ else()
 
   # some windows linker bits
   if (WIN32)
-    add_linker_flag_if_supported(-Wl,--dynamicbase LD_SECURITY_FLAGS)
+    add_linker_flag_if_supported(-Wl,--allow-multiple-definition,--dynamicbase LD_SECURITY_FLAGS)
     add_linker_flag_if_supported(-Wl,--nxcompat LD_SECURITY_FLAGS)
   endif()
 
@@ -878,7 +880,7 @@ endif()
 add_library(readline INTERFACE)
 
 if (BUILD_INTEGRATION)
-  target_compile_definitions(extra INTERFACE LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+  target_compile_definitions(extra INTERFACE WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
 else()
   option(USE_READLINE "Build with GNU readline support." ON)
   if(USE_READLINE AND NOT DEPENDS)
@@ -911,8 +913,8 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AN
   endif()
 endif()
 
-option(LOKI_DEBUG_SHORT_PROOFS "Developer option to substantially reduce uptime proof intervals for local test network debugging (the result lokid will not be usable on the live networks)" OFF)
-if (LOKI_DEBUG_SHORT_PROOFS)
+option(WORKTIPS_DEBUG_SHORT_PROOFS "Developer option to substantially reduce uptime proof intervals for local test network debugging (the result worktipsd will not be usable on the live networks)" OFF)
+if (WORKTIPS_DEBUG_SHORT_PROOFS)
   add_definitions(-DUPTIME_PROOF_BASE_MINUTE=3) # 20x faster uptime proofs
 endif()
 

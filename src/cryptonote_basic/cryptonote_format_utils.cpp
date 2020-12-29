@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2019, The Monero Project
-// Copyright (c)      2018, The Loki Project
+// Copyright (c)      2018, The Worktips Project
 // 
 // All rights reserved.
 // 
@@ -43,10 +43,10 @@
 #include "ringct/rctSigs.h"
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/service_node_voting.h"
-#include "cryptonote_core/loki_name_system.h"
+#include "cryptonote_core/worktips_name_system.h"
 
-#undef LOKI_DEFAULT_LOG_CATEGORY
-#define LOKI_DEFAULT_LOG_CATEGORY "cn"
+#undef WORKTIPS_DEFAULT_LOG_CATEGORY
+#define WORKTIPS_DEFAULT_LOG_CATEGORY "cn"
 
 #define ENCRYPTED_PAYMENT_ID_TAIL 0x8d
 
@@ -481,14 +481,14 @@ namespace cryptonote
     {
       tx_extra_field field;
       bool r = ::do_serialize(ar, field);
-      CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+      CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
       tx_extra_fields.push_back(field);
 
       std::ios_base::iostate state = iss.rdstate();
       eof = (EOF == iss.peek());
       iss.clear(state);
     }
-    CHECK_AND_NO_ASSERT_MES_L1(::serialization::check_stream_state(ar), false, "failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+    CHECK_AND_NO_ASSERT_MES_L1(::serialization::check_stream_state(ar), false, "failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
 
     return true;
   }
@@ -529,7 +529,7 @@ namespace cryptonote
       bool r = ::do_serialize(ar, field);
       if (!r)
       {
-        MWARNING("failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+        MWARNING("failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
         if (!allow_partial)
           return false;
         break;
@@ -543,7 +543,7 @@ namespace cryptonote
     }
     if (!::serialization::check_stream_state(ar))
     {
-      MWARNING("failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+      MWARNING("failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
       if (!allow_partial)
         return false;
     }
@@ -564,7 +564,7 @@ namespace cryptonote
     if (!pick<tx_extra_service_node_contributor>    (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR)) return false;
     if (!pick<tx_extra_service_node_pubkey>         (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_PUBKEY)) return false;
     if (!pick<tx_extra_tx_secret_key>               (nar, tx_extra_fields, TX_EXTRA_TAG_TX_SECRET_KEY)) return false;
-    if (!pick<tx_extra_loki_name_system>            (nar, tx_extra_fields, TX_EXTRA_TAG_LOKI_NAME_SYSTEM)) return false;
+    if (!pick<tx_extra_worktips_name_system>            (nar, tx_extra_fields, TX_EXTRA_TAG_WORKTIPS_NAME_SYSTEM)) return false;
     if (!pick<tx_extra_tx_key_image_proofs>         (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS)) return false;
     if (!pick<tx_extra_tx_key_image_unlock>         (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK)) return false;
 
@@ -881,7 +881,7 @@ namespace cryptonote
     return winner.m_service_node_key;
   }
   //---------------------------------------------------------------
-  bool get_loki_name_system_from_tx_extra(const std::vector<uint8_t> &tx_extra, tx_extra_loki_name_system &entry)
+  bool get_worktips_name_system_from_tx_extra(const std::vector<uint8_t> &tx_extra, tx_extra_worktips_name_system &entry)
   {
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx_extra, tx_extra_fields);
@@ -889,7 +889,7 @@ namespace cryptonote
     return result;
   }
   //---------------------------------------------------------------
-  void add_loki_name_system_to_tx_extra(std::vector<uint8_t> &tx_extra, tx_extra_loki_name_system const &entry)
+  void add_worktips_name_system_to_tx_extra(std::vector<uint8_t> &tx_extra, tx_extra_worktips_name_system const &entry)
   {
     tx_extra_field field = entry;
     add_tx_extra_field_to_tx_extra(tx_extra, field);
@@ -909,7 +909,7 @@ namespace cryptonote
     {
       tx_extra_field field;
       bool r = ::do_serialize(ar, field);
-      CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+      CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
       if (field.type() != type)
         ::do_serialize(newar, field);
 
@@ -917,7 +917,7 @@ namespace cryptonote
       eof = (EOF == iss.peek());
       iss.clear(state);
     }
-    CHECK_AND_NO_ASSERT_MES_L1(::serialization::check_stream_state(ar), false, "failed to deserialize extra field. extra = " << to_hex(lokimq::ustring_view{tx_extra.data(), tx_extra.size()}));
+    CHECK_AND_NO_ASSERT_MES_L1(::serialization::check_stream_state(ar), false, "failed to deserialize extra field. extra = " << to_hex(worktipsmq::ustring_view{tx_extra.data(), tx_extra.size()}));
     tx_extra.clear();
     std::string s = oss.str();
     tx_extra.reserve(s.size());
@@ -1192,8 +1192,8 @@ namespace cryptonote
       decimal_point = default_decimal_point;
     switch (decimal_point)
     {
-      case 9:
-        return "loki";
+      case 8:
+        return "worktips";
       case 6:
         return "megarok";
       case 3:
@@ -1399,7 +1399,7 @@ namespace cryptonote
 
     const blobdata blob = tx_to_blob(t);
 
-    // TODO(loki): Not sure if this is the right fix, we may just want to set
+    // TODO(worktips): Not sure if this is the right fix, we may just want to set
     // unprunable size to the size of the prefix because technically that is
     // what it is and then keep this code path.
     if (t.is_transfer())

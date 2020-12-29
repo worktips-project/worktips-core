@@ -1,9 +1,12 @@
 #pragma once
 #include <cstdint>
 
-constexpr uint64_t COIN                       = (uint64_t)1000000000; // 1 LOKI = pow(10, 9)
-constexpr uint64_t MONEY_SUPPLY               = ((uint64_t)(-1)); // MONEY_SUPPLY - total number coins to be generated
+constexpr uint64_t COIN                       = (uint64_t)100000000; // 1 WORKTIPS = pow(10, 8)
+constexpr uint64_t MONEY_SUPPLY               = (UINT64_C(184467440737095516)); // MONEY_SUPPLY - total number coins to be generated
+constexpr uint64_t EMISSION_SPEED_FACTOR_PER_MINUTE = (20);
+constexpr uint64_t FINAL_SUBSIDY_PER_MINUTE = ((uint64_t)300000000000); // 3 * pow(10, 11)
 constexpr uint64_t EMISSION_LINEAR_BASE       = ((uint64_t)(1) << 58);
+constexpr uint64_t YEARLY_INFLATION_INVERSE   = 200; // 0.5% yearly inflation, inverted for integer division
 constexpr uint64_t EMISSION_SUPPLY_MULTIPLIER = 19;
 constexpr uint64_t EMISSION_SUPPLY_DIVISOR    = 10;
 constexpr uint64_t EMISSION_DIVISOR           = 2000000;
@@ -19,7 +22,7 @@ constexpr uint64_t BLOCK_REWARD_HF16      = 21 * COIN + 1 /* TODO - see below */
 constexpr uint64_t SN_REWARD_HF16         = BLOCK_REWARD_HF16 * 90 / 100;
 constexpr uint64_t FOUNDATION_REWARD_HF16 = BLOCK_REWARD_HF16 * 10 / 100;
 
-// TODO: For now we add 1 extra atomic loki to the HF16 block reward, above; ultimately with pulse
+// TODO: For now we add 1 extra atomic worktips to the HF16 block reward, above; ultimately with pulse
 // we want to just drop the miner reward output entirely when a tx has no transactions, but we don't
 // support that yet in the current code and if we put an output of 0 it currently breaks the test
 // suite (which assumes an output of 0 means ringct, which this is not).  Thus this +1 hack for now,
@@ -60,10 +63,10 @@ enum struct mapping_type : uint16_t
 {
   session,
   wallet,
-  lokinet_1year,
-  lokinet_2years,
-  lokinet_5years,
-  lokinet_10years,
+  worktipsnet_1year,
+  worktipsnet_2years,
+  worktipsnet_5years,
+  worktipsnet_10years,
   _count,
   update_record_internal,
 };
@@ -77,16 +80,16 @@ constexpr uint64_t burn_needed(uint8_t /*hf_version*/, mapping_type type)
       result = 0;
       break;
 
-    case mapping_type::lokinet_1year: /* FALLTHRU */
+    case mapping_type::worktipsnet_1year: /* FALLTHRU */
     case mapping_type::session: /* FALLTHRU */
     case mapping_type::wallet: /* FALLTHRU */
     default:
       result = 20 * COIN;
       break;
 
-    case mapping_type::lokinet_2years: result = 40 * COIN; break;
-    case mapping_type::lokinet_5years: result = 80 * COIN; break;
-    case mapping_type::lokinet_10years: result = 120 * COIN; break;
+    case mapping_type::worktipsnet_2years: result = 40 * COIN; break;
+    case mapping_type::worktipsnet_5years: result = 80 * COIN; break;
+    case mapping_type::worktipsnet_10years: result = 120 * COIN; break;
   }
   return result;
 }

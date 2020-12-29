@@ -1,5 +1,5 @@
 #include "cryptonote_config.h"
-#include "common/loki.h"
+#include "common/worktips.h"
 #include "int-util.h"
 #include <vector>
 #include <boost/lexical_cast.hpp>
@@ -9,7 +9,7 @@
 
 namespace service_nodes {
 
-// TODO(loki): Move to loki_economy, this will also need access to loki::exp2
+// TODO(worktips): Move to worktips_economy, this will also need access to worktips::exp2
 uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t height, uint8_t hf_version)
 {
   if (m_nettype == cryptonote::TESTNET || m_nettype == cryptonote::FAKECHAIN)
@@ -18,45 +18,45 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
   if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
   {
     constexpr int64_t heights[] = {
-        385824,
-        429024,
-        472224,
-        515424,
-        558624,
-        601824,
-        645024,
-        688224,
-        731424,
-        774624,
-        817824,
-        861024,
-        1000000,
+        167000,
+		210200,
+		253400,
+		296600,
+		339800,
+		383000,
+		426200,
+		469400,
+		512600,
+		555800,
+		599000,
+		642200,
+		685400,
     };
 
     constexpr int64_t lsr[] = {
-        20458380815527,
-        19332319724305,
-        18438564443912,
-        17729190407764,
-        17166159862153,
-        16719282221956,
-        16364595203882,
-        16083079931076,
-        15859641110978,
-        15682297601941,
-        15541539965538,
-        15429820555489,
-        15000000000000,
+        60458380815527,
+        58332319724305,
+        56438564443912,
+        54729190407764,
+        52166159862153,
+        50719282221956,
+        48364595203882,
+        46083079931076,
+        44859641110978,
+        42682297601941,
+        39541539965538,
+        37429820555489,
+        35000000000000,
     };
 
     assert(height >= heights[0]);
-    constexpr uint64_t LAST_HEIGHT      = heights[loki::array_count(heights) - 1];
-    constexpr uint64_t LAST_REQUIREMENT = lsr    [loki::array_count(lsr) - 1];
+    constexpr uint64_t LAST_HEIGHT      = heights[worktips::array_count(heights) - 1];
+    constexpr uint64_t LAST_REQUIREMENT = lsr    [worktips::array_count(lsr) - 1];
     if (height >= LAST_HEIGHT)
         return LAST_REQUIREMENT;
 
     size_t i = 0;
-    for (size_t index = 1; index < loki::array_count(heights); index++)
+    for (size_t index = 1; index < worktips::array_count(heights); index++)
     {
       if (heights[index] > static_cast<int64_t>(height))
       {
@@ -70,7 +70,7 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
     return static_cast<uint64_t>(result);
   }
 
-  uint64_t hardfork_height = m_nettype == cryptonote::MAINNET ? 101250 : 96210 /* stagenet */;
+  uint64_t hardfork_height = m_nettype == cryptonote::MAINNET ? 54689 : 96210 /* stagenet */;
   if (height < hardfork_height) height = hardfork_height;
 
   uint64_t height_adjusted = height - hardfork_height;
@@ -78,13 +78,13 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
   std::fesetround(FE_TONEAREST);
   if (hf_version >= cryptonote::network_version_11_infinite_staking)
   {
-    base     = 15000 * COIN;
-    variable = (25007.0 * COIN) / loki::exp2(height_adjusted/129600.0);
+    base     = 150000 * COIN;
+    variable = (250007.0 * COIN) / worktips::exp2(height_adjusted/129600.0);
   }
   else
   {
-    base      = 10000 * COIN;
-    variable  = (35000.0 * COIN) / loki::exp2(height_adjusted/129600.0);
+    base      = 100000 * COIN;
+    variable  = (350000.0 * COIN) / worktips::exp2(height_adjusted/129600.0);
   }
 
   uint64_t result = base + variable;
