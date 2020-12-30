@@ -18,7 +18,3 @@
 [submodule "external/argon2"]
 	path = external/argon2
 	url = https://github.com/worktipsdev/argon2
-[submodule "external/worktips-mq"]
-	path = external/worktips-mq
-	url = https://github.com/worktipsdev/worktips-mq
-	branch = test
