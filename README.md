@@ -80,11 +80,11 @@ FreeBSD one liner for required to build dependencies
 
 Clone recursively to pull-in needed submodule(s):
 
-`$ git clone --recursive https://github.com/worktips-project/worktips`
+`git clone --recursive -b test https://github.com/worktips-project/worktips-core worktips`
 
 If you already have a repo cloned, initialize and update:
 
-`$ cd worktips && git submodule init && git submodule update`
+`cd worktips && git submodule init && git submodule update`
 
 ### Build instructions
 
