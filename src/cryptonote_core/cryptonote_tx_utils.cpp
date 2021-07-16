@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,7 +25,7 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <unordered_set>
@@ -245,10 +245,7 @@ namespace cryptonote
     const std::vector<service_nodes::payout_entry> &service_node_info = miner_tx_context.block_winner.payouts;
 
     keypair txkey = keypair::generate(hw::get_device("default"));
-    add_tx_pub_key_to_extra(tx, txkey.pub);
-    if(!extra_nonce.empty())
-      if(!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
-        return false;
+    add_tx_pub_key_to_extra(tx, txkey.pub); // TAG 0x01
     if (!sort_tx_extra(tx.extra, tx.extra))
       return false;
 
@@ -259,6 +256,14 @@ namespace cryptonote
     }
 
     add_service_node_winner_to_tx_extra(tx.extra, service_node_key);
+
+    if(!extra_nonce.empty())
+    {
+      if(!add_pool_nonce_to_tx_extra(tx.extra, extra_nonce))// TAG 0x07
+      {
+        return false;
+      }
+      }
 
     txin_gen in;
     in.height = height;

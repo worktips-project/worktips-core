@@ -1,22 +1,22 @@
 // Copyright (c) 2014-2019, The Monero Project
 // Copyright (c)      2018, The Worktips Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -83,7 +83,7 @@ static constexpr HardFork::Params testnet_hard_forks[] =
   { network_version_10_bulletproofs,        4,      0, 1542681077 },
   { network_version_11_infinite_staking,    5,      0, 1551223964 },
   { network_version_12_checkpointing,       50,  0, 1561608000 }, // 2019-06-28 14:00AEDT
-  { network_version_13_enforce_checkpoints, 500, 0, 1568440800 }, // 2019-09-13 16:00AEDT
+  //{ network_version_13_enforce_checkpoints, 500, 0, 1568440800 }, // 2019-09-13 16:00AEDT
   //{ network_version_14_blink,               174630, 0, 1575075600 }, // 2019-11-30 07:00UTC
   //{ network_version_15_lns,                 244777, 0, 1583940000 }, // 2020-03-11 15:20UTC
 };
@@ -484,4 +484,3 @@ bool HardFork::get_voting_info(uint8_t version, uint32_t &window, uint32_t &vote
   voting = heights.back().version;
   return enabled;
 }
-
